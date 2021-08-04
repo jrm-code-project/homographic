@@ -1,0 +1,43 @@
+;;; -*- Lisp -*-
+
+(defpackage "LINEAR-FRACTIONAL-TRANSFORM"
+  (:nicknames "LFT")
+  (:shadowing-import-from "SERIES"
+                          "DEFUN"
+                          "FUNCALL"
+                          "LET"
+                          "LET*"
+                          "MULTIPLE-VALUE-BIND")
+  (:shadowing-import-from "STREAM" "STREAM")
+  (:shadow "PI")
+  (:use "COMMON-LISP" "PROMISE" "SERIES" "STREAM" "UTILITIES")
+  (:export
+   "2PI"
+   "BILFT"
+   "CF-STREAM"
+   "CONS-CF-STREAM"
+   "CONS-LFT-STREAM"
+   "INFINITY"
+   "LFT"
+   "LFT-STREAM"
+   "MAKE-BILFT"
+   "MAKE-LFT"
+   "NEGATE"
+   "PHI"
+   "PI"
+   "PI/2"
+   "RECIPROCAL"
+   "SQRT-TWO"
+   "X*"
+   "X+"
+   "X-"
+   "X/"
+   "X-CBRT"
+   "X-COSH"
+   "X-EXP"
+   "X-LOG"
+   "X-SINH"
+   "X-SQRT"
+   "X-TANH"
+   ))
+
