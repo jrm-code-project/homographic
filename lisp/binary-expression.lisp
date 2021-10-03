@@ -20,39 +20,49 @@
                  :delayed-right (slot-value arg 'delayed-right)))
 
 (defun refine-left (binary-expression)
-  (let ((left (force (slot-value binary-expression 'delayed-left))))
-    (make-instance 'binary-expression
-                   :generation (+ (slot-value binary-expression 'generation) 1)
-                   :bilft (compose-bilft-lft-x
-                           (slot-value binary-expression 'bilft)
-                           (if (empty-stream? left)
-                               (make-lft 1 0
-                                         0 0)
-                               (stream-car left)))
-                   :delayed-left (if (empty-stream? left)
-                                     (delay the-empty-stream)
-                                     (stream-delayed-cdr left))
-                   :delayed-right (slot-value binary-expression 'delayed-right))))
+  (let ((delayed-left (slot-value binary-expression 'delayed-left)))
+    (if (null delayed-left)
+        (error "Attempt to refine-left on empty stream.")
+        (let ((left (force delayed-left)))
+          (make-instance 'binary-expression
+                         :generation (+ (slot-value binary-expression 'generation) 1)
+                         :bilft (compose-bilft-lft-x
+                                 (slot-value binary-expression 'bilft)
+                                 (if (empty-stream? left)
+                                     (make-lft 1 1
+                                               0 0)
+                                     (stream-car left)))
+                         :delayed-left (if (empty-stream? left)
+                                           nil
+                                           (stream-delayed-cdr left))
+                         :delayed-right (slot-value binary-expression 'delayed-right))))))
 
 (defun refine-right (binary-expression)
-  (let ((right (force (slot-value binary-expression 'delayed-right))))
-    (make-instance 'binary-expression
-                   :generation (+ (slot-value binary-expression 'generation) 1)
-                   :bilft (compose-bilft-lft-y
-                           (slot-value binary-expression 'bilft)
-                           (if (empty-stream? right)
-                               (make-lft 1 0
-                                         0 0)
-                               (stream-car right)))
-                   :delayed-left (slot-value binary-expression 'delayed-left)
-                   :delayed-right (if (empty-stream? right)
-                                      (delay the-empty-stream)
-                                      (stream-delayed-cdr right)))))
+  (let ((delayed-right (slot-value binary-expression 'delayed-right)))
+    (if (null delayed-right)
+        (error "Attempt to refine-right on empty stream.")
+        (let ((right (force delayed-right)))
+          (make-instance 'binary-expression
+                         :generation (+ (slot-value binary-expression 'generation) 1)
+                         :bilft (compose-bilft-lft-y
+                                 (slot-value binary-expression 'bilft)
+                                 (if (empty-stream? right)
+                                     (make-lft 1 1
+                                               0 0)
+                                     (stream-car right)))
+                         :delayed-left (slot-value binary-expression 'delayed-left)
+                         :delayed-right (if (empty-stream? right)
+                                            nil
+                                            (stream-delayed-cdr right)))))))
 
 (defun refine-fairly (binary-expression)
   (if (zerop (mod (slot-value binary-expression 'generation) 2))
-      (refine-left binary-expression)
-      (refine-right binary-expression)))
+      (if (null (slot-value binary-expression 'delayed-left))
+          (refine-right binary-expression)
+          (refine-left binary-expression))
+      (if (null (slot-value binary-expression 'delayed-right))
+          (refine-left binary-expression)
+          (refine-right binary-expression))))
 
 (defun refine-widest (binary-expression)
   (let* ((bilft (slot-value binary-expression 'bilft))

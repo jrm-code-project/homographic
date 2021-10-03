@@ -23,7 +23,7 @@
                             (cf-stream->lft-stream (stream-cdr cf-stream))))))
 
 (defmethod print-object ((object cf-stream) cl:stream)
-  (print-unreadable-object (object cl:stream :type t :identity t)
+  (print-unreadable-object (object cl:stream :type t)
     (print-lft-stream-as-decimal (cf-stream->lft-stream object) cl:stream)))
 
 (defun lft-stream->cf-stream (lft-stream)
@@ -66,6 +66,14 @@
                                      the-empty-stream
                                      (rational->cf-stream (reciprocal remainder))))))
 
+(defgeneric ->cf-stream (object)
+  (:method ((object lft-stream))
+    (lft-stream->cf-stream object))
+  (:method ((object rational))
+    (rational->cf-stream object))
+  (:method ((object float))
+    (rational->cf-stream (rational object))))
+
 (defun cf-stream->rational (cf-stream)
   (if (empty-stream? cf-stream)
       'infinity
@@ -80,4 +88,33 @@
   (if (empty-stream? object)
       the-empty-stream
       (cons-cf-stream (- (stream-car object)) (negate (stream-cdr object)))))
+
+(defun cf-stream-prefix (left right)
+  (if (and (typep left 'cf-stream)
+           (typep right 'cf-stream)
+           (= (stream-car left) (stream-car right)))
+      (cons-cf-stream (stream-car left) (cf-stream-prefix (stream-cdr left) (stream-cdr right)))
+      the-empty-stream))
+
+(defun cf-stream-suffix (left right)
+  (if (and (typep left 'cf-stream)
+           (typep right 'cf-stream)
+           (= (stream-car left) (stream-car right)))
+      (cf-stream-suffix (stream-cdr left) (stream-cdr right))
+      right))
+
+(defun cf-stream-append2-delayed (left delayed-right)
+  (if (empty-stream? left)
+      (force delayed-right)
+      (cons-cf-stream (stream-car left)
+                      (cf-stream-append2-delayed (stream-cdr left) delayed-right))))
+
+(defun cf-stream-flatten-append (stream-of-streams)
+  (stream-fold-right-delayed #'cf-stream-append2-delayed '() stream-of-streams))
+
+(defun limit-stream->cf-stream (limit-stream)
+  (let* ((cfs (stream-map #'->cf-stream limit-stream))
+         (prefixes (cons-stream the-empty-stream (stream-map #'cf-stream-prefix cfs (stream-cdr cfs)))))
+    (cf-stream-flatten-append (stream-map #'cf-stream-suffix prefixes (stream-cdr prefixes)))))
+
 

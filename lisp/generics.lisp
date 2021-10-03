@@ -2,6 +2,20 @@
 
 (in-package "LINEAR-FRACTIONAL-TRANSFORM")
 
+(defgeneric compose2 (outer inner)
+  (:method ((left function) (right function))
+    (lambda (&rest args)
+      (multiple-value-call left (apply right args))))
+  (:method ((left (eql #'identity)) (right function))
+    right)
+  (:method ((left function) (right (eql #'identity)))
+    left))
+
+(defun compose (&rest functions)
+  (fold-left #'compose2 #'identity functions))
+
+(defgeneric inverse (function))
+
 (defgeneric add2 (left right)
   (:method ((left rational) (right rational))
     (cl:+ left right))
@@ -63,6 +77,21 @@
 (defgeneric x-exp (number)
   (:method ((number float))
     (x-exp (rational number))))
+
+(defgeneric x-expt (base exponent)
+  (:method ((base float) exponent)
+    (x-expt (rational base) exponent))
+  (:method (base (exponent float))
+    (x-expt base (rational exponent)))
+  (:method (base (exponent integer))
+    (cond ((zerop exponent) 1)
+          ((evenp exponent) (x-expt (x* base base) (/ exponent 2)))
+          (t (x* base (x-expt base (- exponent 1))))))
+  (:method ((base function) (exponent integer))
+    (cond ((minusp exponent) (x-expt (inverse base) (- exponent)))
+          ((zerop exponent) #'identity)
+          ((evenp exponent) (x-expt (compose base base) (/ exponent 2)))
+          (t (compose base (x-expt base (- exponent 1)))))))
 
 (defgeneric x-log (number)
   (:method ((number float))

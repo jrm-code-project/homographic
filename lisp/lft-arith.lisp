@@ -2,27 +2,19 @@
 
 (in-package "LINEAR-FRACTIONAL-TRANSFORM")
 
-(defconstant pi
-  (if (boundp 'pi)
-      pi
-      (x/ (x-sqrt 10005) ramanujan-pi-stream)))
-
-(defconstant 2pi
-  (if (boundp '2pi)
-      2pi
-      (x* (x/ (x-sqrt 10005) ramanujan-pi-stream) 2)))
-
-(defconstant pi/2
-  (if (boundp 'pi/2)
-      pi/2
-      (x/ (x/ (x-sqrt 10005) ramanujan-pi-stream) 2)))
+(defparameter pi (x/ (x-sqrt 10005) ramanujan-pi-stream))
+(defparameter 2pi (x* pi 2))
+(defparameter pi/2 (x/ pi 2))
+(defparameter pi/3 (x/ pi 3))
+(defparameter pi/4 (x/ pi 4))
+(defparameter pi/6 (x/ pi 6))
 
 (defun atan-rat (rat)
   (cond ((minusp rat) (funcall lft-negate (atan-rat (- rat))))
         ((> rat 1) (make-instance 'binary-expression
                                   :bilft (make-bilft 0 1 -1 0
                                                      0 0  0 1)
-                                  :delayed-left (delay (x/ pi 2))
+                                  :delayed-left (delay pi/2)
                                   :delayed-right (delay (atan-rat (/ 1 rat)))))
         (t (%rat-atan rat))))
 
@@ -38,7 +30,7 @@
   (lft-stream-minus-p
    lft-stream
    (lambda (refined)
-     (funcall lft-reciprocal (exp-lft-stream (funcall lft-negate refined))))
+     (reciprocal (exp-lft-stream (negate refined))))
    (lambda (refined)
      (lft-stream-greater-than-rat
       refined 1
@@ -51,41 +43,50 @@
 (defmethod x-exp ((number lft-stream))
   (exp-lft-stream number))
 
-(defconstant log2
-  (if (boundp 'log2)
-      log2
-      (%log-rat 2)))
+(defparameter log2 (%log-rat 2))
 
 (defun log-rat (rat)
-  (cond ((minusp rat) (error "Cannot take the log of a negative number."))
-        ((< rat 1) (negate (log-rat (/ 1 rat))))
-        ((> rat 2) (funcall bilft-add
-                            log2
-                            (delay (log-rat (/ rat 2)))))
-        (t (%log-rat rat))))
+  (labels ((divide-down (rat powers-of-two)
+             (if (> rat 2)
+                 (divide-down (/ rat 2) (+ powers-of-two 1))
+                 (funcall bilft-add
+                          (x* powers-of-two log2)
+                          (delay (%log-rat rat))))))
+
+    (cond ((minusp rat) (error "Cannot take the log of a negative number."))
+          ((< rat 1) (negate (log-rat (/ 1 rat))))
+          (t (divide-down rat 0)))))
 
 (defmethod x-log ((number rational))
   (log-rat number))
 
 (defun log-lft-stream (lft-stream)
-  (lft-stream-minus-p
-   lft-stream
-   (lambda (refined)
-     (declare (ignore refined))
-     (error "Cannot take the log of a negative number."))
-   (lambda (refined)
-     (lft-stream-less-than-rat
-      refined 1
-      (lambda (refined*)
-        (negate (log-lft-stream (reciprocal refined*))))
-      (lambda (refined*)
-        (lft-stream-greater-than-rat
-         refined* 2
-         (lambda (refined**)
-           (funcall bilft-add
-                    log2
-                    (delay (log-lft-stream (x/ refined** 2)))))
-         #'%log-lft-stream))))))
+  (labels ((divide-down (lft-stream powers-of-two)
+             (lft-stream-greater-than-rat
+              lft-stream 2
+              (lambda (refined*)
+                (divide-down (x/ refined* 2) (+ powers-of-two 1)))
+              (lambda (refined*)
+                (funcall bilft-add
+                         (x* powers-of-two log2)
+                         (delay (%log-lft-stream refined*)))))))
+
+    (lft-stream-minus-p
+     lft-stream
+     (lambda (refined)
+       (declare (ignore refined))
+       (error "Cannot take the log of a negative number."))
+     (lambda (refined)
+       (lft-stream-less-than-rat
+        refined 1
+        (lambda (refined*)
+          (negate (log-lft-stream (reciprocal refined*))))
+        (lambda (refined*)
+          (lft-stream-greater-than-rat
+           refined* 2
+           (lambda (refined**)
+             (divide-down refined** 0))
+           #'%log-lft-stream)))))))
 
 (defmethod x-log ((number lft-stream))
   (log-lft-stream number))
@@ -94,11 +95,7 @@
   (x-exp (x/ (x-log number) 3)))
 
 (defmethod x-sqrt ((number lft-stream))
-  (lft-stream-less-than-rat
-   number 1
-   #'%sqrt-lft-stream
-   (lambda (number*)
-     (x-exp (x/ (x-log number*) 2)))))
+  (%sqrt-lft-stream number))
 
 (defun tan-lft-stream (lft-stream)
   (lft-stream-minus-p
@@ -253,3 +250,26 @@
            (log-lft-stream
             (funcall lft-sign-infinity lft-stream))))
 
+;;;
+
+(defparameter pythagoras (x-sqrt 2))
+(defparameter theodorus (x-sqrt 3))
+(defparameter sqrt-five (x-sqrt 5))
+
+(defun approximate-zeta-three (nterms)
+  (flet ((f (k)
+            (* (expt -1 k)
+               (/ (* (expt (factorial (+ (* 2 k) 1)) 3)
+                     (expt (factorial (* 2 k)) 3)
+                     (expt (factorial k) 3)
+                     (+ (* 126392 k k k k k)
+                        (* 412708 k k k k)
+                        (* 531578 k k k)
+                        (* 336367 k k)
+                        (* 104000 k)
+                        12463))
+                  (* (factorial (+ (* 3 k) 2))
+                     (expt (factorial (+ (* 4 k) 3)) 3))))))
+    (/ (big-sigma #'f 0 nterms) 24)))
+
+(defparameter apéry (limit-stream->cf-stream (stream-map #'approximate-zeta-three (integers))))

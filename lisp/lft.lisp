@@ -116,11 +116,11 @@
     (cond ((not (zerop result-denominator)) (/ result-numerator result-denominator))
           ((= (* a d) (* b c)) (cond ((not (zerop c)) (/ a c))
                                      ((not (zerop d)) (/ b d))
-                                     ((not (zerop result-numerator)) 'infinity)
+                                     ((or (not (zerop a)) (not (zerop b))) 'infinity)
                                      (t (error 'division-by-zero))))
           (t 'infinity))))
 
-(defun new-evaluate-bilft (a b c d
+(defun evaluate-bilft (a b c d
                        e f g h m-num m-den n-num n-den)
   "Return lim x->m, y->n (axy + bx + cy + d)/(exy + fx + gy + h)"
   (check-type a integer)
@@ -146,67 +146,12 @@
                                  ((not (zerop g)) (/ c g))
                                  ((not (zerop f)) (/ b f))
                                  ((not (zerop e)) (/ a e))
+                                 ((or (not (zerop a))
+                                      (not (zerop b))
+                                      (not (zerop c))
+                                      (not (zerop d))) 'infinity)
                                  (t (error 'division-by-zero))))
           (t 'infinity))))
-
-(defun old-evaluate-bilft (a b c d
-                           e f g h m n)
-  "Return lim x->m, y->n (axy + bx + cy + d)/(exy + fx + gy + h)"
-  (check-type a integer)
-  (check-type b integer)
-  (check-type c integer)
-  (check-type d integer)
-  (check-type e integer)
-  (check-type f integer)
-  (check-type g integer)
-  (check-type h integer)
-  (check-type m (or number (eql infinity)))
-  (check-type n (or number (eql infinity)))
-  (cond ((eq m 'infinity) (if (eq n 'infinity)
-                              (cond ((not (zerop e)) (/ a e))
-                                    ((not (zerop a)) 'infinity)
-                                    ((not (zerop (+ f g))) (/ (+ b c) (+ f g)))
-                                    ((not (zerop (+ b c))) 'infinity)
-                                    ((not (zerop h)) (/ d h))
-                                    (t (error 'division-by-zero)))
-                              (evaluate-lft (+ (* a n) b) (+ (* c n) d)
-                                            (+ (* e n) f) (+ (* g n) h) 1 0)))
-        ((eq n 'infinity) (evaluate-lft (+ (* a m) c) (+ (* b m) d)
-                                        (+ (* e m) g) (+ (* f m) h) 1 0))
-        (t (let ((num (+ (* a m n) (* b m) (* c n) d))
-                 (den (+ (* e m n) (* f m) (* g n) h)))
-             (cond ((not (zerop den)) (/ num den))
-                   ((not (zerop num)) 'infinity)
-                   ((= (* a f g h)
-                       (* b e g h)
-                       (* c e f h)
-                       (* d e f g)) (cond ((not (zerop h)) (/ d h))
-                                          ((not (zerop g)) (/ c g))
-                                          ((not (zerop f)) (/ b f))
-                                          ((not (zerop e)) (/ a e))
-                       (t (error 'division-by-zero))))
-                   (t 'infinity))))))
-
-(defun evaluate-bilft (a b c d
-                       e f g h m-num m-den n-num n-den)
-  (let ((answer1 (new-evaluate-bilft a b c d
-                                     e f g h m-num m-den n-num n-den))
-        (answer2 (old-evaluate-bilft a b c d
-                                     e f g h (if (zerop m-den)
-                                                 'infinity
-                                                 (/ m-num m-den))
-                                     (if (zerop n-den)
-                                         'infinity
-                                         (/ n-num n-den)))))
-    (if (or (and (numberp answer1)
-                 (numberp answer2)
-                 (= answer1 answer2))
-            (and (eq answer1 'infinity)
-                 (eq answer2 'infinity)))
-        answer1
-        (progn (format t "Answers differ for ~d ~d ~d ~d, ~d ~d ~d ~d, ~d ~d, ~d ~d, old: ~s, new: ~s.~%"
-                       a b c d e f g h m-num m-den n-num n-den answer2 answer1)
-               answer2))))
 
 ;;;
 ;;; Printers for lft equations
@@ -275,6 +220,7 @@
 ;;; Instances of lft functions
 ;;;
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
 (defclass lft ()
   ((a :initarg :a
       :initform (error "Required initarg :a omitted")
@@ -315,6 +261,7 @@
 (defmethod initialize-instance :after ((instance lft) &rest initargs)
   (declare (ignore initargs))
   (sb-mop:set-funcallable-instance-function instance (lambda (arg) (funcall-lft instance arg))))
+)
 
 (defmethod print-object ((instance lft) stream)
   (print-unreadable-object (instance stream :type t)
@@ -325,6 +272,7 @@
      (slot-value instance 'd)
      stream)))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
 (defclass bilft ()
   ((a :initarg :a
       :initform (error "Required initarg :a omitted")
@@ -406,6 +354,7 @@
 (defmethod initialize-instance :after ((instance bilft) &rest initargs)
   (declare (ignore initargs))
   (sb-mop:set-funcallable-instance-function instance (lambda (x y) (funcall-bilft instance x y))))
+)
 
 (defmethod print-object ((instance bilft) stream)
   (print-unreadable-object (instance stream :type t)
@@ -423,6 +372,8 @@
 ;;;
 ;;; Constructors
 ;;;
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
 
 (defun canonicalize-lft-coefficients (a b
                                       c d receiver)
@@ -472,13 +423,15 @@
                                 (* c (denominator b)) (* d (denominator b))))))
          (rational (make-lft (numerator a)         (* b (denominator a))
                              (* c (denominator a)) (* d (denominator a))))))))
-(defconstant lft-identity
+)
+
+(defparameter lft-identity
   (if (boundp 'lft-identity)
       lft-identity
       (make-lft 1 0
                 0 1)))
 
-(defconstant lft-negate
+(defparameter lft-negate
   (if (boundp 'lft-negate)
       lft-negate
       (make-lft -1 0
@@ -487,7 +440,7 @@
 (defmethod negate ((lft lft))
   (funcall lft-negate lft))
 
-(defconstant lft-reciprocal
+(defparameter lft-reciprocal
   (if (boundp 'lft-reciprocal)
       lft-reciprocal
       (make-lft 0 1
@@ -496,6 +449,7 @@
 (defmethod reciprocal ((lft lft))
   (funcall lft-reciprocal lft))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
 (defun canonicalize-bilft-coefficients (a b c d e f g h receiver)
   (if (or (minusp e)
           (and (zerop e)
@@ -587,6 +541,7 @@
           (make-bilft
            (numerator a)         (* b (denominator a)) (* c (denominator a)) (* d (denominator a))
            (* e (denominator a)) (* f (denominator a)) (* g (denominator a)) (* h (denominator a))))))))
+)
 
 ;;;
 ;;; Functions that need access to the coefficients
@@ -601,6 +556,9 @@
     (2x2-matrix-tame-inverse a b
                              c d
                              #'%make-lft)))
+
+(defmethod inverse ((function lft))
+  (inverse-lft function))
 
 (defun compose-lft-lft (left right)
   (check-type left lft)
@@ -620,6 +578,9 @@
                          e f
                          g h
                          #'%make-lft)))
+
+(defmethod compose2 ((left lft) (right lft))
+  (compose-lft-lft left right))
 
 (defmethod funcall-lft (lft (arg lft))
   (compose-lft-lft lft arg))
@@ -927,7 +888,7 @@
               (t (funcall if-unknown))))
       (funcall if-unknown)))
 
-(defconstant bilft-add
+(defparameter bilft-add
   (if (boundp 'bilft-add)
       bilft-add
       (make-bilft 0 1 1 0
@@ -936,7 +897,7 @@
 (defun bilft-add (left right)
   (funcall bilft-add left right))
 
-(defconstant bilft-multiply
+(defparameter bilft-multiply
   (if (boundp 'bilft-multiply)
       bilft-multiply
       (make-bilft 1 0 0 0
