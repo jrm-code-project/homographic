@@ -1,7 +1,8 @@
 ;;; -*- Lisp -*-
 
-(defpackage "LINEAR-FRACTIONAL-TRANSFORM"
+(defpackage "LINEAR-FRACTIONAL-TRANSFORMATION"
   (:nicknames "LFT")
+  (:shadowing-import-from "NAMED-LET" "LET")
   (:shadowing-import-from "SERIES"
                           "DEFUN"
                           "FUNCALL"
@@ -9,9 +10,8 @@
                           "LET*"
                           "MULTIPLE-VALUE-BIND")
   (:shadowing-import-from "STREAM" "SCAN-STREAM" "STREAM")
-  (:shadowing-import-from "UTILITIES" "LET")
   (:shadow "PI")
-  (:use "COMMON-LISP" "PROMISE" "SERIES" "STREAM" "UTILITIES")
+  (:use "COMMON-LISP" "NAMED-LET" "PROMISE" "SERIES" "STREAM" "UTILITIES")
   (:export
    "->CF-STREAM"
    "2PI"
@@ -33,19 +33,32 @@
    "PHI"
    "PI"
    "PI/2"
+   "PYTHAGORAS"
    "RECIPROCAL"
    "SQRT-TWO"
+   "SQRT-FIVE"
+   "THEODORUS"
    "X*"
    "X+"
    "X-"
-   "X/"
+   "X-ACOS"
+   "X-ACOSH"
+   "X-ASIN"
+   "X-ASINH"
+   "X-ATAN"
+   "X-ATANH"
    "X-CBRT"
+   "X-COS"
    "X-COSH"
    "X-EXP"
    "X-EXPT"   
    "X-LOG"
+   "X-SIN"
    "X-SINH"
    "X-SQRT"
+   "X-SQUARE"
+   "X-TAN"
    "X-TANH"
+   "X/"
    ))
 

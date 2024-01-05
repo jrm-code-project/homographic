@@ -1,6 +1,6 @@
 ;;; -*- Lisp -*-
 
-(in-package "LINEAR-FRACTIONAL-TRANSFORM")
+(in-package "LINEAR-FRACTIONAL-TRANSFORMATION")
 
 (defclass binary-expression ()
   ((generation :initarg :generation
@@ -64,37 +64,24 @@
           (refine-left binary-expression)
           (refine-right binary-expression))))
 
-(defun refine-widest (binary-expression)
-  (let* ((bilft (slot-value binary-expression 'bilft))
-         (atzero (funcall bilft 0 0))
-         (atxinf (funcall bilft 'infinity 0))
-         (atyinf (funcall bilft 0 'infinity)))
-    (cond ;((and (not (numberp atxinf)) (numberp atyinf)) (refine-right binary-expression))
-          ;((and (numberp atxinf) (not (numberp atyinf))) (refine-left binary-expression))
-          ((or (not (numberp atzero))
-               (not (numberp atxinf))
-               (not (numberp atyinf)))
-           (refine-fairly binary-expression))
-          (t
-           (let ((dx (abs (- atxinf atzero)))
-                 (dy (abs (- atyinf atzero))))
-             (cond ((= dy dx) (refine-fairly binary-expression))
-                   ((> dx dy) (refine-left binary-expression))
-                   (t (refine-right binary-expression))))))))
+(defun refine-disjoint (binary-expression)
+  (if (bilft-disjoint? (slot-value binary-expression 'bilft))
+      (refine-right binary-expression)
+      (refine-left binary-expression)))
 
 (defun binary-expression-minus-p (binary-expression)
   (bilft-minus-p (slot-value binary-expression 'bilft)
                  (constantly t)
                  (constantly nil)
                  (lambda ()
-                   (binary-expression-minus-p (refine-widest binary-expression)))))
+                   (binary-expression-minus-p (refine-disjoint binary-expression)))))
 
 (defun binary-expression-zero-p (binary-expression)
   (bilft-zero-p (slot-value binary-expression 'bilft)
                 (constantly t)
                 (constantly nil)
                 (lambda ()
-                  (binary-expression-zero-p (refine-widest binary-expression)))))
+                  (binary-expression-zero-p (refine-disjoint binary-expression)))))
 
 (defun binary-expression-truncate (binary-expression)
   (bilft-truncate
@@ -107,55 +94,10 @@
                             :delayed-left (slot-value binary-expression 'delayed-left)
                             :delayed-right (slot-value binary-expression 'delayed-right))))
    (lambda ()
-     (binary-expression-truncate (refine-widest binary-expression)))))
+     (binary-expression-truncate (refine-disjoint binary-expression)))))
 
-(defun bilft-compose-refine? (lft bilft if-success if-failure)
-  (let ((attempt (funcall lft bilft)))
-    (if (refine? attempt)
-        (funcall if-success attempt)
-        (funcall if-failure))))
-
-(defun bilft-try-factor-sign (bilft if-success if-failure)
-  (bilft-compose-refine?
-   inverse-lft-sign-positive bilft
-   (lambda (new-bilft)
-     (funcall if-success lft-sign-positive new-bilft))
-   (lambda ()
-     (bilft-compose-refine?
-      inverse-lft-sign-negative bilft
-      (lambda (new-bilft)
-        (funcall if-success lft-sign-negative new-bilft))
-      (lambda ()
-        (bilft-compose-refine?
-         inverse-lft-sign-zero bilft
-         (lambda (new-bilft)
-           (funcall if-success lft-sign-zero new-bilft))
-         (lambda ()
-           (bilft-compose-refine?
-            inverse-lft-sign-infinity bilft
-            (lambda (new-bilft)
-              (funcall if-success lft-sign-infinity new-bilft))
-            if-failure))))))))
-
-(defun bilft-try-factor-digit (bilft if-success if-failure)
-  (bilft-compose-refine?
-   inverse-lft-digit-one bilft
-   (lambda (new-bilft)
-     (funcall if-success lft-digit-one new-bilft))
-   (lambda ()
-     (bilft-compose-refine?
-      inverse-lft-digit-minus-one bilft
-      (lambda (new-bilft)
-        (funcall if-success lft-digit-minus-one new-bilft))
-      (lambda ()
-        (bilft-compose-refine?
-         inverse-lft-digit-zero bilft
-         (lambda (new-bilft)
-           (funcall if-success lft-digit-zero new-bilft))
-         if-failure))))))
-
-(defun binary-expression-factor-sign (binary-expression)
-  (bilft-try-factor-sign
+(defun binary-expression-decompose-sign (binary-expression)
+  (try-decompose-sign
    (slot-value binary-expression 'bilft)
    (lambda (sign factor)
      (values sign (make-instance 'binary-expression
@@ -164,10 +106,10 @@
                                   :delayed-left (slot-value binary-expression 'delayed-left)
                                   :delayed-right (slot-value binary-expression 'delayed-right))))
    (lambda ()
-     (binary-expression-factor-sign (refine-widest binary-expression)))))
+     (binary-expression-decompose-sign (refine-disjoint binary-expression)))))
 
-(defun binary-expression-factor-digit (binary-expression)
-  (bilft-try-factor-digit
+(defun binary-expression-decompose-digit (binary-expression)
+  (try-decompose-digit
    (slot-value binary-expression 'bilft)
    (lambda (digit factor)
      (values digit (make-instance 'binary-expression
@@ -176,15 +118,15 @@
                                   :delayed-left (slot-value binary-expression 'delayed-left)
                                   :delayed-right (slot-value binary-expression 'delayed-right))))
    (lambda ()
-     (binary-expression-factor-digit (refine-widest binary-expression)))))
+     (binary-expression-decompose-digit (refine-disjoint binary-expression)))))
 
 (defun binary-expression->lft-digit-stream (binary-expression)
-  (multiple-value-bind (digit remainder) (binary-expression-factor-digit binary-expression)
+  (multiple-value-bind (digit remainder) (binary-expression-decompose-digit binary-expression)
     (cons-lft-stream digit 
                      (binary-expression->lft-digit-stream remainder))))
 
 (defun binary-expression->lft-stream (binary-expression)
-  (multiple-value-bind (sign remainder) (binary-expression-factor-sign binary-expression)
+  (multiple-value-bind (sign remainder) (binary-expression-decompose-sign binary-expression)
     (cons-lft-stream sign (binary-expression->lft-digit-stream remainder))))
 
 (defmethod print-object ((obj binary-expression) cl:stream)
@@ -205,23 +147,15 @@
                   :delayed-left (stream-delayed-cdr x)
                   :delayed-right (stream-delayed-cdr y))))
 
-(defmethod funcall-bilft (bilft (x lft-stream) (y promise))
-  (binary-expression->lft-stream
-   (make-instance 'binary-expression
-                  :generation 0
-                  :bilft (compose-bilft-lft-x
-                           bilft
-                           (stream-car x))
-                  :delayed-left (stream-delayed-cdr x)
-                  :delayed-right y)))
-
 (defun unfold-expression-tree (counter generate left)
-  (binary-expression->lft-stream
-   (make-instance 'binary-expression
-                  :generation 0
-                  :bilft (compose-bilft-lft-x (funcall generate counter) (stream-car left))
-                  :delayed-left (stream-delayed-cdr left)
-                  :delayed-right (delay (unfold-expression-tree (+ counter 1) generate left)))))
+  (funcall (funcall generate counter)
+           left
+           (delay-lft-stream (unfold-expression-tree (+ counter 1) generate left))))
+
+(defun unfold-expression-tree-1 (root-bilft generate left)
+  (funcall root-bilft
+           left
+           (delay-lft-stream (unfold-expression-tree 1 generate left))))
 
 (defmethod add2 ((left lft-stream) (right lft-stream))
   (bilft-add left right))
@@ -230,65 +164,57 @@
   (bilft-multiply left right))
 
 (defun %atan-lft-stream (lft-stream)
-  (let ((lft-stream* (funcall inverse-lft-sign-zero lft-stream)))
-    (binary-expression->lft-stream
-     (make-instance 'binary-expression
-                    :generation 0
-                    :bilft (compose-bilft-lft-x
-                            (make-bilft 1 1 -1 -1
-                                        2 0  0  2)
-                            (stream-car lft-stream*))
-                    :delayed-left (stream-delayed-cdr lft-stream*)
-                    :delayed-right (delay (unfold-expression-tree
-                                           1 (lambda (n)
-                                               (make-bilft (+ (* 2 n) 1) n 0 (+ n 1)
-                                                           (+ n 1)       0 n (+ (* 2 n) 1)))
-                                           lft-stream*))))))
+  (unfold-expression-tree-1
+   (make-bilft 1 1 -1 -1
+               2 0  0  2)
+   (lambda (n)
+     (make-bilft (+ (* 2 n) 1) n 0 (+ n 1)
+                 (+ n 1)       0 n (+ (* 2 n) 1)))
+   (funcall (inverse-lft lft-sign-zero) lft-stream)))
 
 (defun %exp-lft-stream (lft-stream)
   (unfold-expression-tree
    0 (lambda (n)
        (make-bilft (+ (* 2 n) 2) (+ (* 2 n) 1) (* 2 n) (+ (* 2 n) 1)
                    (+ (* 2 n) 1) (* 2 n) (+ (* 2 n) 1) (+ (* 2 n) 2)))
-   (inverse-lft-sign-zero lft-stream)))
+   (funcall (inverse-lft lft-sign-zero) lft-stream)))
 
 (defun %log-lft-stream (lft-stream)
-  (binary-expression->lft-stream
-   (make-instance 'binary-expression
-                  :generation 0
-                  :bilft (compose-bilft-lft-x
-                          (make-bilft 1 1 -1 -1
-                                      0 1  1  0)
-                          (stream-car lft-stream))
-                  :delayed-left (stream-delayed-cdr lft-stream)
-                  :delayed-right (delay (unfold-expression-tree
-                                         1 (lambda (n)
-                                             (make-bilft n (+ (* n 2) 1)       (+ n 1) 0
-                                                         0       (+ n 1) (+ (* n 2) 1) n))
-                                         lft-stream)))))
+  (unfold-expression-tree-1
+   (make-bilft 1 1 -1 -1
+               0 1  1  0)
+   (lambda (n)
+     (make-bilft n (+ (* n 2) 1)       (+ n 1) 0
+                 0       (+ n 1) (+ (* n 2) 1) n))
+   lft-stream))
 
 (defun %sqrt-lft-stream (lft-stream)
-  (unfold-expression-tree
-   0 (constantly (make-bilft 1 2 1 0
-                             0 1 2 1))
-   lft-stream))
+  ;; (unfold-expression-tree
+  ;;  0 (constantly (make-bilft 1 2 1 0
+  ;;                            0 1 2 1))
+  ;;  lft-stream)
+  (let ((stream nil))
+    (setq stream
+          (funcall (make-bilft 1 2 1 0
+                               0 1 2 1)
+                   lft-stream
+                   (delay-lft-stream stream)))
+    stream))
 
 (defun %square-lft-stream (lft-stream)
   (bilft-multiply lft-stream lft-stream))
 
 (defun %tan-lft-stream (lft-stream)
-  (let ((lft-stream* (inverse-lft-sign-zero lft-stream)))
-    (binary-expression->lft-stream
-     (make-instance 'binary-expression
-                    :generation 0
-                    :bilft (compose-bilft-lft-x
-                            (make-bilft 1 1 -1 -1
-                                        2 0  0  2)
-                            (stream-car lft-stream*))
-                    :delayed-left (stream-delayed-cdr lft-stream*)
-                    :delayed-right (delay
-                                    (unfold-expression-tree
-                                     1 (lambda (n)
-                                         (make-bilft (+ (* 2 n) 1) (- (* 2 n) 1) (+ (* 2 n) 1) (+ (* 2 n) 3)
-                                                     (+ (* 2 n) 3) (+ (* 2 n) 1) (- (* 2 n) 1) (+ (* 2 n) 1)))
-                                     lft-stream*))))))
+  (unfold-expression-tree-1
+   (make-bilft 1 1 -1 -1
+               2 0  0  2)
+   (lambda (n)
+     (make-bilft (+ (* 2 n) 1) (- (* 2 n) 1) (+ (* 2 n) 1) (+ (* 2 n) 3)
+                 (+ (* 2 n) 3) (+ (* 2 n) 1) (- (* 2 n) 1) (+ (* 2 n) 1)))
+   (funcall (inverse-lft lft-sign-zero) lft-stream)))
+
+(defun %rat-tan (x)
+  (check-type x (rational -1 1))
+  (%tan-lft-stream
+   (cf-stream->lft-stream
+    (rational->cf-stream x))))

@@ -1,6 +1,8 @@
 ;;; -*- Lisp -*-
 
-(in-package "LINEAR-FRACTIONAL-TRANSFORM")
+(in-package "LINEAR-FRACTIONAL-TRANSFORMATION")
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
 
 (defclass cf-stream (stream:stream)
   ())
@@ -9,6 +11,7 @@
   `(make-instance 'cf-stream
                   :car ,stream-car
                   :delayed-cdr (delay ,stream-cdr)))
+)
 
 (defun cf-stream->lft-stream (cf-stream)
   (cond ((empty-stream? cf-stream) the-empty-stream)
@@ -112,9 +115,7 @@
 (defun cf-stream-flatten-append (stream-of-streams)
   (stream-fold-right-delayed #'cf-stream-append2-delayed '() stream-of-streams))
 
-(defun limit-stream->cf-stream (limit-stream)
-  (let* ((cfs (stream-map #'->cf-stream limit-stream))
-         (prefixes (cons-stream the-empty-stream (stream-map #'cf-stream-prefix cfs (stream-cdr cfs)))))
-    (cf-stream-flatten-append (stream-map #'cf-stream-suffix prefixes (stream-cdr prefixes)))))
-
-
+;; (defun limit-stream->cf-stream (limit-stream)
+;;   (let* ((cfs (stream-map #'->cf-stream limit-stream))
+;;          (prefixes (cons-stream the-empty-stream (stream-map #'cf-stream-prefix cfs (stream-cdr cfs)))))
+;;     (cf-stream-flatten-append (stream-map #'cf-stream-suffix prefixes (stream-cdr prefixes)))))

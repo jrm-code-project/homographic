@@ -1,6 +1,6 @@
 ;;; -*- Lisp -*-
 
-(in-package "LINEAR-FRACTIONAL-TRANSFORM")
+(in-package "LINEAR-FRACTIONAL-TRANSFORMATION")
 
 (defgeneric compose2 (outer inner)
   (:method ((left function) (right function))
@@ -17,6 +17,10 @@
 (defgeneric inverse (function))
 
 (defgeneric add2 (left right)
+  (:method ((left (eql 0)) right)
+           right)
+  (:method (left (right (eql 0)))
+           left)
   (:method ((left rational) (right rational))
     (cl:+ left right))
   (:method ((left float) right)
@@ -25,6 +29,14 @@
     (add2 left (rational right))))
 
 (defgeneric mul2 (left right)
+  (:method ((left (eql 0)) right)
+           0)
+  (:method ((left (eql 1)) right)
+           right)
+  (:method (left (right (eql 0)))
+           0)
+  (:method (left (right (eql 1)))
+           left)
   (:method ((left rational) (right rational))
     (cl:* left right))
   (:method ((left float) right)
@@ -65,12 +77,12 @@
   (fold-left #'mul2 1 args))
 
 (defun x- (leftmost &rest rights)
-  (cond ((consp rights) (sub2 leftmost (fold-left #'add2 (car rights) (cdr rights))))
+  (cond ((consp rights) (fold-left #'sub2 leftmost rights))
         ((null rights)  (negate leftmost))
         (t (error "Unexpected value ~s." rights))))
 
 (defun x/ (leftmost &rest rights)
-  (cond ((consp rights) (div2 leftmost (fold-left #'mul2 (car rights) (cdr rights))))
+  (cond ((consp rights) (fold-left #'div2 leftmost rights))
         ((null rights)  (reciprocal leftmost))
         (t (error "Unexpected value ~s." rights))))
 
@@ -79,17 +91,27 @@
     (x-exp (rational number))))
 
 (defgeneric x-expt (base exponent)
+  (:argument-precedence-order exponent base)
   (:method ((base float) exponent)
     (x-expt (rational base) exponent))
   (:method (base (exponent float))
     (x-expt base (rational exponent)))
+  (:method (base (exponent (eql 0)))
+    1)
+  (:method (base (exponent (eql 1)))
+    base)
   (:method (base (exponent integer))
-    (cond ((zerop exponent) 1)
+    (cond ((minusp exponent) (x-expt (reciprocal base) (- exponent)))
           ((evenp exponent) (x-expt (x* base base) (/ exponent 2)))
           (t (x* base (x-expt base (- exponent 1))))))
+  (:method ((base (eql 0)) exponent)
+    0)
+  (:method ((base (eql 1)) exponent)
+    1)
+  (:method ((base function) (exponent (eql 0)))
+    #'identity)
   (:method ((base function) (exponent integer))
     (cond ((minusp exponent) (x-expt (inverse base) (- exponent)))
-          ((zerop exponent) #'identity)
           ((evenp exponent) (x-expt (compose base base) (/ exponent 2)))
           (t (compose base (x-expt base (- exponent 1)))))))
 
@@ -97,6 +119,33 @@
   (:method ((number float))
     (x-log (rational number))))
 
+(defgeneric x-square (number)
+  (:method ((number rational))
+    (cl:* number number))
+  (:method ((number float))
+    (x-square (rational number))))
+
 (defgeneric x-sqrt (number)
   (:method ((number float))
     (x-sqrt (rational number))))
+
+(defgeneric x-cubert (number)
+  (:method ((number float))
+    (x-cubert (rational number))))
+
+(defgeneric x-tan (number)
+  (:method ((number float))
+    (x-tan (rational number))))
+
+(defgeneric x-acos (number)
+  (:method ((number float))
+    (x-acos (rational number))))
+
+(defgeneric x-asin (number)
+  (:method ((number float))
+    (x-asin (rational number))))
+
+(defgeneric x-atan (number &optional denominator))
+                                  
+
+

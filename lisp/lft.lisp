@@ -1,8 +1,98 @@
 ;;; -*- Lisp -*-
 
-(in-package "LINEAR-FRACTIONAL-TRANSFORM")
+(in-package "LINEAR-FRACTIONAL-TRANSFORMATION")
 
 ;;; Arithmetic utilities
+
+(defun 2x1v< (a
+              b
+
+              c
+              d)
+  "Returns TRUE if a/b < c/d"
+  (< (- (* a d) (* b c)) 0))
+
+(defun 2x2m<2x1v (a b
+                  c d
+
+                  e
+                  f)
+  "Returns TRUE if both a/c and b/d are less than e/f"
+  (and (2x1v< a
+              c
+
+              e
+              f)
+       (2x1v< b
+              d
+
+              e
+              f)))
+
+(defun 2x2m<2x2m (a b
+                  c d
+
+                  e f
+                  g h)
+  "Returns TRUE if both a/c and b/d are less than each of e/g and f/h."
+  (and (2x2m<2x1v a b
+                  c d
+
+                  e
+                  g)
+       (2x2m<2x1v a b
+                  c d
+
+                  f
+                  h)))
+
+(defun disjoint? (a b
+                  c d
+
+                  e f
+                  g h)
+  "Returns TRUE if range [a/c, b/d] is disjoint from range [e/g, f/h]"
+  (or (2x2m<2x2m a b
+                 c d
+
+                 e f
+                 g h)
+      (2x2m<2x2m e f
+                 g h
+
+                 a b
+                 c d)))
+
+(defun tensor-disjoint? (a b c d
+                         e f g h)
+  (disjoint? a c
+             e g
+
+             b d
+             f h))
+
+(defun 2x1-vector-vector-multiply (a b
+
+                                   c
+                                   d)
+  (declare (type integer a b c d))
+  (+ (* a c) (* b d)))
+
+(defun 2x2-matrix-vector-multiply (a b
+                                   c d
+
+                                   e
+                                   f
+
+                                   receiver)
+  "(funcall receiver i j) where
+[i]   [a b]   [e]
+[j] = [c d] x [f]
+"
+  (declare (type integer a b c d e f))
+  (funcall receiver
+           (2x1-vector-vector-multiply a b e f)
+           (2x1-vector-vector-multiply c d e f)))
 
 (defun 2x2-matrix-multiply (a b
                             c d
@@ -11,24 +101,42 @@
                             g h
 
                             receiver)
+  (declare (type integer a b c d e f g h))
   "(funcall receiver i j k l) where
-   [i j]   [a b]   [e f]   
+   [i j]   [a b]   [e f]
    [k l] = [c d] x [g h]
 "
-  (funcall receiver
-           (+ (* a e) (* b g)) (+ (* a f) (* b h))
-           (+ (* c e) (* d g)) (+ (* c f) (* d h))))
+  (2x2-matrix-vector-multiply a b
+                              c d
+
+                              e
+                              g
+                              (lambda (i k)
+                                (declare (integer i k))
+                                (2x2-matrix-vector-multiply a b
+                                                            c d
+
+                                                            f
+                                                            h
+                                                            (lambda (j l)
+                                                              (declare (integer j l))
+                                                              (funcall receiver i j k l))))))
+
+  ;; (funcall receiver
+  ;;          (+ (* a e) (* b g)) (+ (* a f) (* b h))
+  ;;          (+ (* c e) (* d g)) (+ (* c f) (* d h))))
 
 (defun 2x2-matrix-tame-inverse (a b
                                 c d
                                 receiver)
-  ;;            
+  ;;
   ;; Inverse is 1/(- (* a d) (* b c)) * [ d -b]
   ;;                                    [-c  a]
   ;; Tame inverse omits the reciprocal of the determinant.
   "(funcall receiver i j k l) where
    [i j]   [ d -b]
    [k l] = [-c  a]"
+  (declare (integer a b c d))
   (funcall receiver
            d    (- b)
            (- c)   a))
@@ -40,6 +148,7 @@
                        i j k l
 
                        receiver)
+  (declare (integer a b c d e f g h i j k l))
   ;; Multiply a 2x2 matrix by a 2x2x2 tensor yielding a 2x2x2 tensor
   (funcall receiver
            (+ (* a e) (* b i)) (+ (* a f) (* b j)) (+ (* a g) (* b k)) (+ (* a h) (* b l))
@@ -52,7 +161,8 @@
                          k l
 
                          receiver)
-  ;; Multiply a 2x2x2 tensor by a 2x2x2 matrix in the x direction yielding a 2x2x2 tensor
+  (declare (integer a b c d e f g h i j k l))
+  ;; Multiply a 2x2x2 tensor by a 2x2 matrix in the x direction yielding a 2x2x2 tensor
   (funcall receiver
            (+ (* a i) (* c k)) (+ (* b i) (* d k)) (+ (* a j) (* c l)) (+ (* b j) (* d l))
            (+ (* e i) (* g k)) (+ (* f i) (* h k)) (+ (* e j) (* g l)) (+ (* f j) (* h l))))
@@ -64,39 +174,57 @@
                          k l
 
                          receiver)
-  ;; Multiply a 2x2x2 tensor by a 2x2x2 matrix in the y direction yielding a 2x2x2 tensor
+  ;; Multiply a 2x2x2 tensor by a 2x2 matrix in the y direction yielding a 2x2x2 tensor
+  (declare (integer a b c d e f g h i j k l))
   (funcall receiver
            (+ (* a i) (* b k)) (+ (* a j) (* b l)) (+ (* c i) (* d k)) (+ (* c j) (* d l))
            (+ (* e i) (* f k)) (+ (* e j) (* f l)) (+ (* g i) (* h k)) (+ (* g j) (* h l))))
 
-(defun sign (a b)
-  (cond ((< a 0) (if (<= b 0)
-                     -1
-                     0))
-        ((= a 0) (cond ((< b 0) -1)
-                       ((= b 0) 0)
-                       (t 1)))
-        (t (if (< b 0)
-               0
-               1))))
+;;;           A
+;;;      <0  =0  >0
+;;;   <0 -1  -1   0
+;;; B =0 -1   0   1
+;;;   >0  0   1   1
 
-(defun 2x2-matrix-refine? (a b
-                           c d)
-  (let ((a (sign a c))
-        (b (sign b d)))
-    (and (= a b)
-         (not (= b 0)))))
+(defun s (a b)
+  (cond ((minusp a) (if (plusp b)
+                           0
+                           -1))
+        ((plusp a) (if (minusp b)
+                           0
+                           1))
+        ((minusp b) -1)
+        ((plusp b) 1)
+        (t 0)))
 
-(defun 2x2x2-tensor-refine? (a b c d
-                             e f g h)
-  (let ((a (sign a e))
-        (b (sign b f))
-        (c (sign c g))
-        (d (sign d h)))
-    (and (= a b)
-         (= b c)
-         (= c d)
-         (not (= d 0)))))
+;; (defun sign (a b)
+;;   (cond ((< a 0) (if (<= b 0)
+;;                      -1
+;;                      0))
+;;         ((= a 0) (cond ((< b 0) -1)
+;;                        ((= b 0) 0)
+;;                        (t 1)))
+;;         (t (if (< b 0)
+;;                0
+;;                1))))
+
+(defun 2x2-matrix-range? (a b
+                          c d)
+  (let ((l (s a c))
+        (r (s b d)))
+    (and (= l r)
+         (not (= r 0)))))
+
+(defun 2x2x2-tensor-range? (a b c d
+                            e f g h)
+  (let ((i (s a e))
+        (j (s b f))
+        (k (s c g))
+        (l (s d h)))
+    (and (= i j)
+         (= j k)
+         (= k l)
+         (not (= l 0)))))
 
 ;;;
 ;;; Evaluators for homographic functions
@@ -154,10 +282,10 @@
           (t 'infinity))))
 
 ;;;
-;;; Printers for lft equations
+;;; Formatters for lft equations
 ;;;
 
-(defun print-term (coefficient variables stream &key initial-term)
+(defun format-term (stream coefficient variables &key initial-term)
   "Format a term like ' + 3x' or ' - 2y'."
   (check-type coefficient integer)
   (check-type variables (or null string))
@@ -171,50 +299,51 @@
             (and (null variables) (= (abs coefficient) 1))
             variables)))
 
-(defun print-terms (coefficients variables stream &key suppress-parens)
+(defun format-term-list (stream coefficients variables &key suppress-parens)
   "Format a list of terms given a list of coefficients and variables."
   (labels ((l1 (coefficients variables)
              (cond ((null coefficients) (format stream "0"))
                    ((zerop (car coefficients)) (l1 (cdr coefficients) (cdr variables)))
                    ((or suppress-parens
-                        (every #'zerop (cdr coefficients))) (l2 coefficients variables t))
+                        (every #'zerop (cdr coefficients)))
+                    (l2 coefficients variables t))
                    (t (format stream "(")
                       (l2 coefficients variables t)
                       (format stream ")"))))
 
            (l2 (coefficients variables initial-term)
              (unless (null coefficients)
-               (print-term (car coefficients) (car variables) stream :initial-term initial-term)
+               (format-term stream (car coefficients) (car variables) :initial-term initial-term)
                (l2 (cdr coefficients) (cdr variables) nil))))
 
     (l1 coefficients variables)))
 
-(defun print-lft-equation (a b
-                           c d stream)
+(defun format-lft-equation (stream a b
+                                   c d)
   (cond ((and (zerop c)
               (= d 1))
-         (print-terms (list a b) '("x" nil) stream :suppress-parens t))
+         (format-term-list stream (list a b) '("x" nil) :suppress-parens t))
         ((and (= c 1)
               (zerop d))
          (if (zerop a)
              (format stream "~d/x" b)
              (format stream "~d ~:[+~;-~] ~d/x" a (minusp b) (abs b))))
         (t
-         (print-terms (list a b) '("x" nil) stream)
+         (format-term-list stream (list a b) '("x" nil))
          (format stream "/")
-         (print-terms (list c d) '("x" nil) stream))))
+         (format-term-list stream (list c d) '("x" nil)))))
 
-(defun print-bilft-equation (a b c d
-                             e f g h stream)
+(defun format-bilft-equation (stream a b c d
+                                     e f g h)
   (if (and (zerop e)
            (zerop f)
            (zerop g)
            (= h 1))
-      (print-terms (list a b c d) '("xy" "x" "y" nil) stream :suppress-parens t)
+      (format-term-list stream (list a b c d) '("xy" "x" "y" nil) :suppress-parens t)
       (progn
-        (print-terms (list a b c d) '("xy" "x" "y" nil) stream)
+        (format-term-list stream (list a b c d) '("xy" "x" "y" nil))
         (format stream "/")
-        (print-terms (list e f g h) '("xy" "x" "y" nil) stream))))
+        (format-term-list stream (list e f g h) '("xy" "x" "y" nil)))))
 
 ;;;
 ;;; Instances of lft functions
@@ -265,12 +394,12 @@
 
 (defmethod print-object ((instance lft) stream)
   (print-unreadable-object (instance stream :type t)
-    (print-lft-equation
+    (format-lft-equation
+     stream
      (slot-value instance 'a)
      (slot-value instance 'b)
      (slot-value instance 'c)
-     (slot-value instance 'd)
-     stream)))
+     (slot-value instance 'd))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
 (defclass bilft ()
@@ -358,7 +487,8 @@
 
 (defmethod print-object ((instance bilft) stream)
   (print-unreadable-object (instance stream :type t)
-    (print-bilft-equation
+    (format-bilft-equation
+     stream
      (slot-value instance 'a)
      (slot-value instance 'b)
      (slot-value instance 'c)
@@ -366,8 +496,7 @@
      (slot-value instance 'e)
      (slot-value instance 'f)
      (slot-value instance 'g)
-     (slot-value instance 'h)
-     stream)))
+     (slot-value instance 'h))))
 
 ;;;
 ;;; Constructors
@@ -382,13 +511,21 @@
                (minusp d)))
       (canonicalize-lft-coefficients (- a) (- b)
                                      (- c) (- d) receiver)
-      (let ((gcd (gcd a b c d)))
-        (if (> gcd 1)
-            (canonicalize-lft-coefficients (/ a gcd) (/ b gcd)
-                                           (/ c gcd) (/ d gcd) receiver)
+       (if (and (evenp a)
+                (evenp b)
+                (evenp c)
+                (evenp d))
+           (canonicalize-lft-coefficients (/ a 2) (/ b 2)
+                                          (/ c 2) (/ d 2) receiver)
+
+       ;; (let ((gcd (gcd a b c d)))
+       ;;   (if (> gcd 1)
+       ;;       (progn (format t "~%LFT GCD was ~d" gcd)
+       ;;       (canonicalize-lft-coefficients (/ a gcd) (/ b gcd)
+       ;;                                      (/ c gcd) (/ d gcd) receiver))
             (funcall receiver
                      a b
-                     c d)))))
+                     c d))))
 
 (defun %make-lft (a b c d)
   (canonicalize-lft-coefficients
@@ -423,7 +560,8 @@
                                 (* c (denominator b)) (* d (denominator b))))))
          (rational (make-lft (numerator a)         (* b (denominator a))
                              (* c (denominator a)) (* d (denominator a))))))))
-)
+
+) ;; eval-when
 
 (defparameter lft-identity
   (if (boundp 'lft-identity)
@@ -460,14 +598,29 @@
                                  (minusp h)))))))
       (canonicalize-bilft-coefficients (- a) (- b) (- c) (- d)
                                        (- e) (- f) (- g) (- h) receiver)
-      (let ((gcd (gcd a b c d e f g h)))
-        (if (> gcd 1)
-            (canonicalize-bilft-coefficients (/ a gcd) (/ b gcd) (/ c gcd) (/ d gcd)
-                                             (/ e gcd) (/ f gcd) (/ g gcd) (/ h gcd)
-                                             receiver)
+      (if (and (evenp a)
+               (evenp b)
+               (evenp c)
+               (evenp d)
+               (evenp e)
+               (evenp f)
+               (evenp g)
+               (evenp h))
+          (canonicalize-bilft-coefficients (/ a 2) (/ b 2) (/ c 2) (/ d 2)
+                                           (/ e 2) (/ f 2) (/ g 2) (/ h 2) receiver)
+
+
+      ;; (let ((gcd (gcd a b c d e f g h)))
+      ;;   (if (> gcd 1)
+      ;;         (progn (format t "~%biLFT GCD was ~d" gcd)
+ 
+      ;;       (canonicalize-bilft-coefficients (/ a gcd) (/ b gcd) (/ c gcd) (/ d gcd)
+      ;;                                        (/ e gcd) (/ f gcd) (/ g gcd) (/ h gcd)
+      ;;                                        receiver))
+
             (funcall receiver
                      a b c d
-                     e f g h)))))
+                     e f g h))))
 
 (defun %make-bilft (a b c d
                     e f g h)
@@ -478,7 +631,7 @@
             e* f* g* h*)
      (make-instance 'bilft
                     :a a* :b b* :c c* :d d*
-                    :e e* :f f* :g g* :h h*))))  
+                    :e e* :f f* :g g* :h h*))))
 
 (defun make-bilft (a b c d
                    e f g h)
@@ -673,12 +826,12 @@
 
                       #'%make-bilft)))
 
-(defgeneric refine? (object)
+(defgeneric range? (object)
   (:method ((object lft))
-    (2x2-matrix-refine? (slot-value object 'a) (slot-value object 'b)
-                        (slot-value object 'c) (slot-value object 'd)))
+    (2x2-matrix-range? (slot-value object 'a) (slot-value object 'b)
+                       (slot-value object 'c) (slot-value object 'd)))
   (:method ((object bilft))
-    (2x2x2-tensor-refine?
+    (2x2x2-tensor-range?
      (slot-value object 'a) (slot-value object 'b) (slot-value object 'c) (slot-value object 'd)
      (slot-value object 'e) (slot-value object 'f) (slot-value object 'g) (slot-value object 'h))))
 
@@ -695,6 +848,11 @@
        (not (minusp (slot-value bilft 'f)))
        (not (minusp (slot-value bilft 'g)))
        (not (minusp (slot-value bilft 'h)))))
+
+(defun bilft-disjoint? (bilft)
+  (tensor-disjoint?
+   (slot-value bilft 'a) (slot-value bilft 'b) (slot-value bilft 'c) (slot-value bilft 'd)
+   (slot-value bilft 'e) (slot-value bilft 'f) (slot-value bilft 'g) (slot-value bilft 'h)))
 
 ;;;
 ;;; Workhorse functions
@@ -740,13 +898,57 @@
               (t (funcall if-unknown))))
       (funcall if-unknown)))
 
+(defun lft-plus-p (lft if-plus if-not-plus if-unknown)
+  (check-type lft lft)
+  (if (pole-negative-p lft)
+      (let ((bound-a (funcall lft 0))
+            (bound-b (funcall lft 'infinity)))
+        (cond ((eq bound-a 'infinity)
+               (cond ((eq bound-b 'infinity) (funcall if-unknown))
+                     ((plusp bound-b) (funcall if-plus))
+                     (t (funcall if-not-plus))))
+              ((eq bound-b 'infinity)
+               (if (plusp bound-a)
+                   (funcall if-plus)
+                   (funcall if-not-plus)))
+              ((and (plusp bound-a)
+                    (plusp bound-b))
+               (funcall if-plus))
+              (t (funcall if-not-plus))))
+      (funcall if-unknown)))
+
+(defun lft-non-negative-p (lft if-non-negative if-not-non-negative if-unknown)
+  (check-type lft lft)
+  (if (pole-negative-p lft)
+      (let ((bound-a (funcall lft 0))
+            (bound-b (funcall lft 'infinity)))
+        (cond ((eq bound-a 'infinity)
+               (cond ((eq bound-b 'infinity) (funcall if-unknown))
+                     ((not (minusp bound-b)) (funcall if-non-negative))
+                     (t (funcall if-not-non-negative))))
+              ((eq bound-b 'infinity)
+               (if (minusp bound-a)
+                   (funcall if-not-non-negative)
+                   (funcall if-non-negative)))
+              ((and (not (minusp bound-a))
+                    (not (minusp bound-b)))
+               (funcall if-non-negative))
+              (t (funcall if-not-non-negative))))
+      (funcall if-unknown)))
+
 (defun lft-less-than-rat (lft rat if-less-than if-not-less-than if-unknown)
   (check-type lft lft)
   (if (pole-negative-p lft)
       (let ((bound-a (funcall lft 0))
             (bound-b (funcall lft 'infinity)))
-        (cond ((eq bound-a 'infinity) (funcall if-unknown))
-              ((eq bound-b 'infinity) (funcall if-unknown))
+        (cond ((eq bound-a 'infinity)
+               (cond ((eq bound-b 'infinity) (funcall if-unknown))
+                     ((>= bound-b rat) (funcall if-not-less-than))
+                     (t (funcall if-unknown))))
+              ((eq bound-b 'infinity)
+               (if (>= bound-a rat)
+                   (funcall if-not-less-than)
+                   (funcall if-unknown)))
               ((and (< bound-a rat)
                     (< bound-b rat))
                (funcall if-less-than))
@@ -761,8 +963,14 @@
   (if (pole-negative-p lft)
       (let ((bound-a (funcall lft 0))
             (bound-b (funcall lft 'infinity)))
-        (cond ((eq bound-a 'infinity) (funcall if-unknown))
-              ((eq bound-b 'infinity) (funcall if-unknown))
+        (cond ((eq bound-a 'infinity)
+               (cond ((eq bound-b 'infinity) (funcall if-unknown))
+                     ((> bound-b rat) (funcall if-greater-than))
+                     (t (funcall if-unknown))))
+              ((eq bound-b 'infinity)
+               (if (> bound-a rat)
+                   (funcall if-greater-than)
+                   (funcall if-unknown)))
               ((and (> bound-a rat)
                     (> bound-b rat))
                (funcall if-greater-than))
@@ -776,9 +984,17 @@
   (make-lft 1 rat
             0 1))
 
+(defun lft-subtract-rat (rat)
+  (make-lft 1 (- rat)
+            0 1))
+
 (defun lft-multiply-by-rat (rat)
   (make-lft rat 0
             0   1))
+
+(defun lft-divide-by-rat (rat)
+  (make-lft 1 0
+            0 rat))
 
 (defmethod add2 ((left lft) (right rational))
   (funcall (lft-add-rat right) left))
@@ -829,10 +1045,10 @@
             (upper-bound (funcall lft 'infinity)))
         (if (and (numberp lower-bound)
                  (numberp upper-bound))
-            (let ((lower-single (coerce lower-bound 'double-float))
-                  (upper-single (coerce upper-bound 'double-float)))
-              (if (= lower-single upper-single)
-                  (funcall if-success lower-single)
+            (let ((lower-double (coerce lower-bound 'double-float))
+                  (upper-double (coerce upper-bound 'double-float)))
+              (if (= lower-double upper-double)
+                  (funcall if-success lower-double)
                   (funcall if-failure)))
             (funcall if-failure)))
       (funcall if-failure)))

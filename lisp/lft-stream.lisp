@@ -1,6 +1,6 @@
 ;;; -*- Lisp -*-
 
-(in-package "LINEAR-FRACTIONAL-TRANSFORM")
+(in-package "LINEAR-FRACTIONAL-TRANSFORMATION")
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
 (defclass lft-stream (stream:stream)
@@ -10,6 +10,10 @@
   `(make-instance 'lft-stream
                   :car ,lft
                   :delayed-cdr (delay ,tail)))
+
+(defmacro delay-lft-stream (lft-stream)
+  `(cons-lft-stream lft-identity ,lft-stream))
+
 )
 
 (defun show-lft-stream (lft-stream &optional (length 5))
@@ -21,22 +25,28 @@
        (format t "}"))
     (format t "~:[   ~;{~]~s~%" (zerop count) (stream-car lft-stream))))
 
-(defparameter phi
+(defun lft-stream-map (f stream) ;; ugh.
+  (if (empty-stream? stream)
+      the-empty-stream
+      (cons-lft-stream (funcall f (stream-car stream))
+                       (lft-stream-map f (stream-cdr stream)))))
+
+(defun circular-lft-stream (lft)
   (let ((stream nil))
-    (setq stream (cons-lft-stream (make-lft 1 1
-                                            1 0)
-                                  stream))
+    (setq stream (cons-lft-stream lft stream))
     stream))
 
-(defparameter sqrt-two
-  (let ((stream nil))
-    (setq stream (cons-lft-stream (make-lft 1 2
-                                            1 1)
-                                  stream))
-    stream))
+(defparameter phi (circular-lft-stream (make-lft 1 1
+                                                 1 0)))
+
+(defparameter sqrt-two (circular-lft-stream (make-lft 1 2
+                                                      1 1)))
 
 (defmethod funcall-lft (lft (arg lft-stream))
-  (cons-lft-stream lft arg))
+  ;; (cons-lft-stream lft arg)
+  (make-instance 'lft-stream
+                 :car (funcall lft (stream-car arg))
+                 :delayed-cdr (stream-delayed-cdr arg)))
 
 (defmethod add2 ((left rational) (right lft-stream))
   (funcall (lft-add-rat left) right))
@@ -86,6 +96,20 @@
    (lambda () (funcall receive-true lft-stream))
    (lambda () (funcall receive-false lft-stream))
    (lambda () (lft-stream-minus-p (refine-lft-stream lft-stream) receive-true receive-false))))
+
+(defun lft-stream-plus-p (lft-stream receive-true receive-false)
+  (lft-plus-p
+   (stream-car lft-stream)
+   (lambda () (funcall receive-true lft-stream))
+   (lambda () (funcall receive-false lft-stream))
+   (lambda () (lft-stream-plus-p (refine-lft-stream lft-stream) receive-true receive-false))))
+
+(defun lft-stream-non-negative-p (lft-stream receive-true receive-false)
+  (lft-non-negative-p
+   (stream-car lft-stream)
+   (lambda () (funcall receive-true lft-stream))
+   (lambda () (funcall receive-false lft-stream))
+   (lambda () (lft-stream-non-negative-p (refine-lft-stream lft-stream) receive-true receive-false))))
 
 (defun lft-stream-truncate (lft-stream)
   (lft-truncate
@@ -144,29 +168,32 @@
     (when *print-lft-stream-as-decimal*
       (print-lft-stream-as-decimal object cl:stream))))
 
-(defun lft-compose-refine? (left right if-success if-failure)
-  (let ((attempt (funcall left right)))
-    (if (refine? attempt)
-        (funcall if-success attempt)
+(defun decompose (left composed)
+  (values left (funcall (inverse-lft left) composed)))
+
+(defun decompose-range? (left composed if-success if-failure)
+  (multiple-value-bind (left right) (decompose left composed)
+    (if (range? right)
+        (funcall if-success left right)
         (funcall if-failure))))
 
-(defparameter lft-digit-minus-one
-  (if (boundp 'lft-digit-minus-one)
-      lft-digit-minus-one
+(defparameter lft-digit-low
+  (if (boundp 'lft-digit-low)
+      lft-digit-low
       (make-lft 1 0
                 1 2)))
 
-(defun lft-digit-minus-one (object)
-  (funcall lft-digit-minus-one object))
+(defun lft-digit-low (object)
+  (funcall lft-digit-low object))
 
-(defparameter lft-digit-one
-  (if (boundp 'lft-digit-one)
-      lft-digit-one
+(defparameter lft-digit-high
+  (if (boundp 'lft-digit-high)
+      lft-digit-high
       (make-lft 2 1
                 0 1)))
 
-(defun lft-digit-one (object)
-  (funcall lft-digit-one object))
+(defun lft-digit-high (object)
+  (funcall lft-digit-high object))
 
 (defparameter lft-digit-zero
   (if (boundp 'lft-digit-zero)
@@ -177,59 +204,32 @@
 (defun lft-digit-zero (object)
   (funcall lft-digit-zero object))
 
-(defparameter inverse-lft-digit-minus-one
-  (if (boundp 'inverse-lft-digit-minus-one)
-      inverse-lft-digit-minus-one
-      (inverse-lft lft-digit-minus-one)))
-
-(defun inverse-lft-digit-minus-one (object)
-  (funcall inverse-lft-digit-minus-one object))
-
-(defparameter inverse-lft-digit-one
-  (if (boundp 'inverse-lft-digit-one)
-      inverse-lft-digit-one
-      (inverse-lft lft-digit-one)))
-
-(defun inverse-lft-digit-one (object)
-  (funcall inverse-lft-digit-one object))
-
-(defparameter inverse-lft-digit-zero
-  (if (boundp 'inverse-lft-digit-zero)
-      inverse-lft-digit-zero
-      (inverse-lft lft-digit-zero)))
-
-(defun inverse-lft-digit-zero (object)
-  (funcall inverse-lft-digit-zero object))
-
-(defun lft-try-factor-digit (lft if-success if-failure)
-  (lft-compose-refine?
-   inverse-lft-digit-one lft
-   (lambda (new-lft)
-     (funcall if-success lft-digit-one new-lft))
+(defun try-decompose-digit (lft if-success if-failure)
+  (decompose-range?
+   lft-digit-high lft
+   if-success
    (lambda ()
-     (lft-compose-refine?
-      inverse-lft-digit-minus-one lft
-      (lambda (new-lft)
-        (funcall if-success lft-digit-minus-one new-lft))
+     (decompose-range?
+      lft-digit-low lft
+      if-success
       (lambda ()
-        (lft-compose-refine?
-         inverse-lft-digit-zero lft
-         (lambda (new-lft)
-           (funcall if-success lft-digit-zero new-lft))
+        (decompose-range?
+         lft-digit-zero lft
+         if-success
          if-failure))))))
 
-(defun lft-stream-factor-digit (lft-stream)
-  (lft-try-factor-digit
+(defun lft-stream-decompose-digit (lft-stream)
+  (try-decompose-digit
    (stream-car lft-stream)
-   (lambda (digit factor)
+   (lambda (digit remainder)
      (values digit (make-instance 'lft-stream
-                                  :car factor
+                                  :car remainder
                                   :delayed-cdr (stream-delayed-cdr lft-stream))))
    (lambda ()
-     (lft-stream-factor-digit (refine-lft-stream lft-stream)))))
+     (lft-stream-decompose-digit (refine-lft-stream lft-stream)))))
 
 (defun lft-stream->lft-digit-stream (lft-stream)
-  (multiple-value-bind (digit remainder) (lft-stream-factor-digit lft-stream)
+  (multiple-value-bind (digit remainder) (lft-stream-decompose-digit lft-stream)
     (cons-lft-stream digit (lft-stream->lft-digit-stream remainder))))
 
 (defparameter lft-sign-infinity
@@ -268,72 +268,36 @@
 (defun lft-sign-zero (object)
   (funcall lft-sign-zero object))
 
-(defparameter inverse-lft-sign-infinity
-  (if (boundp 'inverse-lft-sign-infinity)
-      inverse-lft-sign-infinity
-      (inverse-lft lft-sign-infinity)))
-
-(defun inverse-lft-sign-infinity (object)
-  (funcall inverse-lft-sign-infinity object))
-
-(defparameter inverse-lft-sign-negative
-  (if (boundp 'inverse-lft-sign-negative)
-      inverse-lft-sign-negative
-      (inverse-lft lft-sign-negative)))
-
-(defun inverse-lft-sign-negative (object)
-  (funcall inverse-lft-sign-negative object))
-
-(defparameter inverse-lft-sign-positive
-  (if (boundp 'inverse-lft-sign-positive)
-      inverse-lft-sign-positive
-      (inverse-lft lft-sign-positive)))
-
-(defun inverse-lft-sign-positive (object)
-  (funcall inverse-lft-sign-positive object))
-
-(defparameter inverse-lft-sign-zero
-  (if (boundp 'inverse-lft-sign-zero)
-      inverse-lft-sign-zero
-      (inverse-lft lft-sign-zero)))
-
-(defun inverse-lft-sign-zero (object)
-  (funcall inverse-lft-sign-zero object))
-
-(defun lft-try-factor-sign (lft if-success if-failure)
-  (lft-compose-refine?
-   inverse-lft-sign-positive lft
-   (lambda (new-lft)
-     (funcall if-success lft-sign-positive new-lft))
+(defun try-decompose-sign (lft if-success if-failure)
+  (decompose-range?
+   lft-sign-positive lft
+   if-success
    (lambda ()
-     (lft-compose-refine?
-      inverse-lft-sign-negative lft
-      (lambda (new-lft)
-        (funcall if-success lft-sign-negative new-lft))
+     (decompose-range?
+      lft-sign-negative lft
+      if-success
       (lambda ()
-        (lft-compose-refine?
-         inverse-lft-sign-zero lft
-         (lambda (new-lft)
-           (funcall if-success lft-sign-zero new-lft))
+        (decompose-range?
+         lft-sign-zero lft
+         if-success
          (lambda ()
-           (lft-compose-refine?
-            inverse-lft-sign-infinity lft
-            (lambda (new-lft)
-              (funcall if-success lft-sign-infinity new-lft))
+           (decompose-range?
+            lft-sign-infinity lft
+            if-success
             if-failure))))))))
 
-(defun lft-stream-factor-sign (lft-stream)
-  (lft-try-factor-sign
+(defun lft-stream-decompose-sign (lft-stream)
+  (try-decompose-sign
    (stream-car lft-stream)
-   (lambda (sign factor)
+   (lambda (sign remainder)
      (values sign (make-instance 'lft-stream
-                                 :car factor
+                                 :car remainder
                                  :delayed-cdr (stream-delayed-cdr lft-stream))))
    (lambda ()
-     (lft-stream-factor-sign (refine-lft-stream lft-stream)))))
+     (lft-stream-decompose-sign (refine-lft-stream lft-stream)))))
 
 (defun canonicalize-lft-stream (lft-stream)
-  (multiple-value-bind (sign remainder) (lft-stream-factor-sign lft-stream)
+  (multiple-value-bind (sign remainder) (lft-stream-decompose-sign lft-stream)
     (cons-lft-stream sign (lft-stream->lft-digit-stream remainder))))
 
 (defun lft-stream->double (lft-stream)
@@ -350,73 +314,66 @@
                          the-empty-stream
                          (%rat->lft-stream denominator remainder)))))
 
-(defun rat->lft-stream (rat)
-  (etypecase rat
-    (integer (%rat->lft-stream rat 1))
-    (rational (%rat->lft-stream (numerator rat) (denominator rat)))
-    ((or single-float double-float) (%rat->lft-stream (numerator (rational rat)) (denominator (rational rat))))))
+(defgeneric ->lft-stream (number)
+  (:method ((number integer))
+    (%rat->lft-stream number 1))
+  (:method ((number rational))
+    (%rat->lft-stream (numerator number) (denominator number)))
+  (:method ((number float))
+    (->lft-stream (rational number))))
 
-(defun big-k-stream (numerators denominators)
-  (cons-lft-stream (make-lft 0 (stream-car numerators)
-                             1 (stream-car denominators))
-                   (big-k-stream (stream-cdr numerators) (stream-cdr denominators))))
-
-(defun %rat-atan (z)
-  (let ((z-squared (square z)))
-    (cons-lft-stream (make-lft 0 z
-                               1 1)
-                     (big-k-stream (stream-map (lambda (square)
-                                                 (* z-squared square))
-                                               (squares))
-                                   (stream-cdr (odds))))))
-
-(defun %exp-rat (x)
-  ;; 1/2 < x <= 2
-  (labels ((l (n)
-             (cons-lft-stream
-              (make-lft (+ (* 4 n) 2) x
-                        x             0)
-              (l (+ n 1)))))
-    (cons-lft-stream
-     (make-lft (+ 2 x) x
-               (- 2 x) x)
-     (l 1))))
-
-(defun %log-rat (x)
-  (if (< x 1)
-      (error "%log-rat called on small x"))
-  (labels ((l (n)
-             (cons-lft-stream
-              (funcall (make-lft 0             (- x 1)
-                                 (- x 1) (+ (* n 2) 1))
-                       (make-lft 0       (+ n 1)
-                                 (+ n 1)       2))
-              (l (+ n 1)))))
-    (l 0)))
-
-(defun %rat-pow (x y)
-  (labels ((l (n)
-             (cons-lft-stream
-              (funcall (make-lft 0             (- x 1)
-                                 (- x 1) (- (* n 2) 1))
-                       (make-lft 0       (- n y)
-                                 (+ n y)       2))
-              (l (+ n 1)))))
-    (cons-lft-stream
-     (make-lft y 1
-               0 1)
-     (l 1))))
-
+;;; Reinhold Heckmann
 (defun %sqrt-rat (p q)
-  (labels ((rollover (a b c)
-             (let ((d (+ (* 2 (- b a)) c)))
-               (if (> d 0)
-                   (cons-lft-stream lft-digit-minus-one (rollover (* a 4) d c))
-                   (cons-lft-stream lft-digit-one (rollover (- d) (* b 4) c))))))
-    (rollover p q (- p q))))
+  (let ((diff (- p q)))
+    (labels ((rollover (num den)
+               (let ((d (+ (* 2 (- den num)) diff)))
+                 (if (> d 0)
+                     (cons-lft-stream lft-digit-low (rollover (* num 4) d))
+                     (cons-lft-stream lft-digit-high (rollover (- d) (* den 4)))))))
+      (cons-lft-stream lft-sign-positive (rollover p q)))))
 
 (defmethod x-sqrt ((number rational))
   (%sqrt-rat (numerator number) (denominator number)))
+
+(defun %exp-rat (x)
+  (check-type x (rational (1/2) 2))
+  (cons-lft-stream
+   lft-sign-positive
+   (cons-lft-stream
+    (make-lft (+ 2 x) x
+              (- 2 x) x)
+    (lft-stream-map (lambda (n)
+                      (make-lft (+ (* 4 n) 2) x
+                                x             0))
+                    (naturals)))))
+
+(defun %log-rat (x)
+  (check-type x (rational (1) *))
+  (cons-lft-stream
+   lft-sign-positive
+   (lft-stream-map
+    (lambda (n)
+      (funcall (make-lft 0             (- x 1)
+                         (- x 1) (+ (* n 2) 1))
+               (make-lft 0       (+ n 1)
+                         (+ n 1)       2)))
+    (integers))))
+
+(defun %rat-pow (x y)
+  (check-type x (rational (1) *))
+  (check-type y (rational (0) (1)))
+  (cons-lft-stream
+   lft-sign-positive
+   (cons-lft-stream
+    (make-lft y 1
+              0 1)
+    (lft-stream-map
+     (lambda (n)
+       (funcall (make-lft 0             (- x 1)
+                          (- x 1) (- (* n 2) 1))
+                (make-lft 0       (- n y)
+                          (+ n y)       2)))
+     (naturals)))))
 
 (defparameter ramanujan-pi-stream
   ;; sqrt(10005)/pi
@@ -439,6 +396,31 @@
         (cons-lft-stream (make-lft 6795705 6795704
                                    213440  213440)
                          (l 1)))))
+
+(defun big-k-stream (numerators denominators)
+  (cons-lft-stream (make-lft 0 (stream-car numerators)
+                             1 (stream-car denominators))
+                   (big-k-stream (stream-cdr numerators) (stream-cdr denominators))))
+
+(defun %rat-atan (z)
+  (check-type z (rational (0) 1))
+  (let ((z-squared (square z)))
+    (cons-lft-stream (make-lft 0 z
+                               1 1)
+                     (big-k-stream (stream-map (lambda (square)
+                                                 (* z-squared square))
+                                               (squares))
+                                   (stream-cdr (odds))))))
+
+(defun %rat-tan (x)
+  (check-type x (rational (0) 1))
+  (lft-stream-map
+   (lambda (n)
+     (funcall (make-lft 0 x
+                        x (+ (* n 4) 1))
+              (make-lft 0 x
+                        x (- (* n -4) 3))))
+   (integers)))
 
 (defparameter euler-gompertz
   (big-k-stream (cons-stream 1 (double-stream (naturals)))
