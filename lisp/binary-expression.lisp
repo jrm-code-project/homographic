@@ -1,5 +1,7 @@
 ;;; -*- Lisp -*-
 
+;;; The algorithms for binary expressions were developed by William Gosper.
+
 (in-package "LINEAR-FRACTIONAL-TRANSFORMATION")
 
 (defclass binary-expression ()
@@ -162,6 +164,9 @@
 
 (defmethod mul2 ((left lft-stream) (right lft-stream))
   (bilft-multiply left right))
+
+;;; The algorithms for unfolded expression trees were developed by
+;;; Peter Potts.
 
 (defun %atan-lft-stream (lft-stream)
   (unfold-expression-tree-1

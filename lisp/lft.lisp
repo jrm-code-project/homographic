@@ -318,8 +318,12 @@
 
     (l1 coefficients variables)))
 
+(defparameter *print-lambdas* nil
+  "If T, print λx. in the algebraic printout of a LFT.")
+
 (defun format-lft-equation (stream a b
                                    c d)
+  (when *print-lambdas* (format stream "λx."))
   (cond ((and (zerop c)
               (= d 1))
          (format-term-list stream (list a b) '("x" nil) :suppress-parens t))
@@ -335,6 +339,7 @@
 
 (defun format-bilft-equation (stream a b c d
                                      e f g h)
+  (when *print-lambdas* (format stream "λxy."))
   (if (and (zerop e)
            (zerop f)
            (zerop g)
@@ -504,28 +509,34 @@
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
 
+(defparameter *reduce-to-lowest* nil
+  "If T, use the GCD to reduce the coefficients of a LFT to lowest terms.")
+
 (defun canonicalize-lft-coefficients (a b
                                       c d receiver)
-  (if (or (minusp c)
-          (and (zerop c)
-               (minusp d)))
-      (canonicalize-lft-coefficients (- a) (- b)
-                                     (- c) (- d) receiver)
-       (if (and (evenp a)
-                (evenp b)
-                (evenp c)
-                (evenp d))
-           (canonicalize-lft-coefficients (/ a 2) (/ b 2)
-                                          (/ c 2) (/ d 2) receiver)
-
-       ;; (let ((gcd (gcd a b c d)))
-       ;;   (if (> gcd 1)
-       ;;       (progn (format t "~%LFT GCD was ~d" gcd)
-       ;;       (canonicalize-lft-coefficients (/ a gcd) (/ b gcd)
-       ;;                                      (/ c gcd) (/ d gcd) receiver))
-            (funcall receiver
-                     a b
-                     c d))))
+  (cond ((or (minusp c)
+             (and (zerop c)
+                  (minusp d)))
+         (canonicalize-lft-coefficients (- a) (- b)
+                                        (- c) (- d) receiver))
+        (*reduce-to-lowest*
+         (let ((gcd (gcd a b c d)))
+           (if (> gcd 1)
+               (funcall receiver
+                        (/ a gcd) (/ b gcd)
+                        (/ c gcd) (/ d gcd))
+               (funcall receiver
+                        a b
+                        c d))))
+        ((and (evenp a)
+              (evenp b)
+              (evenp c)
+              (evenp d))
+         (canonicalize-lft-coefficients (/ a 2) (/ b 2)
+                                        (/ c 2) (/ d 2) receiver))
+        (t (funcall receiver
+                    a b
+                    c d))))
 
 (defun %make-lft (a b c d)
   (canonicalize-lft-coefficients
@@ -538,28 +549,27 @@
                     :c c* :d d*))))
 
 (defun make-lft (a b c d)
-  (cond
-    ((typep a 'float) (make-lft (rational a) b c d))
-    ((typep b 'float) (make-lft a (rational b) c d))
-    ((typep c 'float) (make-lft a b (rational c) d))
-    ((typep d 'float) (make-lft a b c (rational d)))
-    (t (etypecase a
-         (integer
-          (etypecase b
-            (integer
-             (etypecase c
-               (integer
-                (etypecase d
-                  (integer (%make-lft a b
-                                      c d))
-                  (rational (make-lft (* a (denominator d)) (* b (denominator d))
-                                      (* c (denominator d)) (numerator d)))))
-               (rational (make-lft (* a (denominator c)) (* b (denominator c))
-                                   (numerator c)         (* d (denominator c))))))
-            (rational (make-lft (* a (denominator b)) (numerator b)
-                                (* c (denominator b)) (* d (denominator b))))))
-         (rational (make-lft (numerator a)         (* b (denominator a))
-                             (* c (denominator a)) (* d (denominator a))))))))
+  (etypecase a
+    (float (make-lft (rational a) b c d))
+    (integer
+     (etypecase b
+       (float (make-lft a (rational b) c d))
+       (integer
+        (etypecase c
+          (float (make-lft a b (rational c) d))
+          (integer
+           (etypecase d
+             (float (make-lft a b c (rational d)))
+             (integer (%make-lft a b
+                                 c d))
+             (rational (make-lft (* a (denominator d)) (* b (denominator d))
+                                 (* c (denominator d)) (numerator d)))))
+          (rational (make-lft (* a (denominator c)) (* b (denominator c))
+                              (numerator c)         (* d (denominator c))))))
+       (rational (make-lft (* a (denominator b)) (numerator b)
+                           (* c (denominator b)) (* d (denominator b))))))
+    (rational (make-lft (numerator a)         (* b (denominator a))
+                        (* c (denominator a)) (* d (denominator a))))))
 
 ) ;; eval-when
 
@@ -588,39 +598,39 @@
   (funcall lft-reciprocal lft))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
+
 (defun canonicalize-bilft-coefficients (a b c d e f g h receiver)
-  (if (or (minusp e)
-          (and (zerop e)
-               (or (minusp f)
-                   (and (zerop f)
-                        (or (minusp g)
-                            (and (zerop g)
-                                 (minusp h)))))))
-      (canonicalize-bilft-coefficients (- a) (- b) (- c) (- d)
-                                       (- e) (- f) (- g) (- h) receiver)
-      (if (and (evenp a)
-               (evenp b)
-               (evenp c)
-               (evenp d)
-               (evenp e)
-               (evenp f)
-               (evenp g)
-               (evenp h))
-          (canonicalize-bilft-coefficients (/ a 2) (/ b 2) (/ c 2) (/ d 2)
-                                           (/ e 2) (/ f 2) (/ g 2) (/ h 2) receiver)
-
-
-      ;; (let ((gcd (gcd a b c d e f g h)))
-      ;;   (if (> gcd 1)
-      ;;         (progn (format t "~%biLFT GCD was ~d" gcd)
- 
-      ;;       (canonicalize-bilft-coefficients (/ a gcd) (/ b gcd) (/ c gcd) (/ d gcd)
-      ;;                                        (/ e gcd) (/ f gcd) (/ g gcd) (/ h gcd)
-      ;;                                        receiver))
-
-            (funcall receiver
-                     a b c d
-                     e f g h))))
+  (cond ((or (minusp e)
+             (and (zerop e)
+                  (or (minusp f)
+                      (and (zerop f)
+                           (or (minusp g)
+                               (and (zerop g)
+                                    (minusp h)))))))
+         (canonicalize-bilft-coefficients (- a) (- b) (- c) (- d)
+                                          (- e) (- f) (- g) (- h) receiver))
+        (*reduce-to-lowest*
+         (let ((gcd (gcd a b c d e f g h)))
+           (if (> gcd 1)
+               (funcall receiver
+                        (/ a gcd) (/ b gcd) (/ c gcd) (/ d gcd)
+                        (/ e gcd) (/ f gcd) (/ g gcd) (/ h gcd))
+               (funcall receiver
+                        a b c d
+                        e f g h))))
+        ((and (evenp a)
+              (evenp b)
+              (evenp c)
+              (evenp d)
+              (evenp e)
+              (evenp f)
+              (evenp g)
+              (evenp h))
+         (canonicalize-bilft-coefficients (/ a 2) (/ b 2) (/ c 2) (/ d 2)
+                                          (/ e 2) (/ f 2) (/ g 2) (/ h 2) receiver))
+        (t (funcall receiver
+                    a b c d
+                    e f g h))))
 
 (defun %make-bilft (a b c d
                     e f g h)
@@ -635,66 +645,65 @@
 
 (defun make-bilft (a b c d
                    e f g h)
-  (cond
-    ((typep a 'float) (make-bilft (rational a) b c d e f g h))
-    ((typep b 'float) (make-bilft a (rational b) c d e f g h))
-    ((typep c 'float) (make-bilft a b (rational c) d e f g h))
-    ((typep d 'float) (make-bilft a b c (rational d) e f g h))
-    ((typep e 'float) (make-bilft a b c d (rational e) f g h))
-    ((typep f 'float) (make-bilft a b c d e (rational f) g h))
-    ((typep g 'float) (make-bilft a b c d e f (rational g) h))
-    ((typep h 'float) (make-bilft a b c d e f g (rational h)))
-    (t (etypecase a
-         (integer
-          (etypecase b
-            (integer
-             (etypecase c
-               (integer
-                (etypecase d
-                  (integer
-                   (etypecase e
-                     (integer
-                      (etypecase f
-                        (integer
-                         (etypecase g
-                           (integer
-                            (etypecase h
-                              (integer
-                               (%make-bilft a b c d
-                                            e f g h))
-                              (rational
-                               (make-bilft
-                                (* a (denominator h)) (* b (denominator h)) (* c (denominator h)) (* d (denominator h))
-                                (* e (denominator h)) (* f (denominator h)) (* g (denominator h)) (numerator h)))))
-                           (rational
-                            (make-bilft
-                             (* a (denominator g)) (* b (denominator g)) (* c (denominator g)) (* d (denominator g))
-                             (* e (denominator g)) (* f (denominator g)) (numerator g)         (* h (denominator g))))))
-                        (rational
-                         (make-bilft
-                          (* a (denominator f)) (* b (denominator f)) (* c (denominator f)) (* d (denominator f))
-                          (* e (denominator f)) (numerator f)         (* g (denominator f)) (* h (denominator f))))))
-                     (rational
-                      (make-bilft
-                       (* a (denominator e)) (* b (denominator e)) (* c (denominator e)) (* d (denominator e))
-                       (numerator e)         (* f (denominator e)) (* g (denominator e)) (* h (denominator e))))))
-                  (rational
-                   (make-bilft
-                    (* a (denominator d)) (* b (denominator d)) (* c (denominator d)) (numerator d)
-                    (* e (denominator d)) (* f (denominator d)) (* g (denominator d)) (* h (denominator d))))))
-               (rational
-                (make-bilft
-                 (* a (denominator c)) (* b (denominator c)) (numerator c) (* d (denominator c))
-                 (* e (denominator c)) (* f (denominator c)) (* g (denominator c)) (* h (denominator c))))))
-            (rational
-             (make-bilft
-              (* a (denominator b)) (numerator b)         (* c (denominator b)) (* d (denominator b))
-              (* e (denominator b)) (* f (denominator b)) (* g (denominator b)) (* h (denominator b))))))
-         (rational
-          (make-bilft
-           (numerator a)         (* b (denominator a)) (* c (denominator a)) (* d (denominator a))
-           (* e (denominator a)) (* f (denominator a)) (* g (denominator a)) (* h (denominator a))))))))
-)
+  (etypecase a
+    (float (make-bilft (rational a) b c d e f g h))
+    (integer
+     (etypecase b
+       (float (make-bilft a (rational b) c d e f g h))
+       (integer
+        (etypecase c
+          (float (make-bilft a b (rational c) d e f g h))
+          (integer
+           (etypecase d
+             (float (make-bilft a b c (rational d) e f g h))
+             (integer
+              (etypecase e
+                (float (make-bilft a b c d (rational e) f g h))
+                (integer
+                 (etypecase f
+                   (float (make-bilft a b c d e (rational f) g h))
+                   (integer
+                    (etypecase g
+                      (float (make-bilft a b c d e f (rational g) h))
+                      (integer
+                       (etypecase h
+                         (float (make-biltf a b c d e f g (rational h)))
+                         (integer
+                          (%make-bilft a b c d
+                                       e f g h))
+                         (rational
+                          (make-bilft
+                           (* a (denominator h)) (* b (denominator h)) (* c (denominator h)) (* d (denominator h))
+                           (* e (denominator h)) (* f (denominator h)) (* g (denominator h)) (numerator h)))))
+                      (rational
+                       (make-bilft
+                        (* a (denominator g)) (* b (denominator g)) (* c (denominator g)) (* d (denominator g))
+                        (* e (denominator g)) (* f (denominator g)) (numerator g)         (* h (denominator g))))))
+                   (rational
+                    (make-bilft
+                     (* a (denominator f)) (* b (denominator f)) (* c (denominator f)) (* d (denominator f))
+                     (* e (denominator f)) (numerator f)         (* g (denominator f)) (* h (denominator f))))))
+                (rational
+                 (make-bilft
+                  (* a (denominator e)) (* b (denominator e)) (* c (denominator e)) (* d (denominator e))
+                  (numerator e)         (* f (denominator e)) (* g (denominator e)) (* h (denominator e))))))
+             (rational
+              (make-bilft
+               (* a (denominator d)) (* b (denominator d)) (* c (denominator d)) (numerator d)
+               (* e (denominator d)) (* f (denominator d)) (* g (denominator d)) (* h (denominator d))))))
+          (rational
+           (make-bilft
+            (* a (denominator c)) (* b (denominator c)) (numerator c) (* d (denominator c))
+            (* e (denominator c)) (* f (denominator c)) (* g (denominator c)) (* h (denominator c))))))
+       (rational
+        (make-bilft
+         (* a (denominator b)) (numerator b)         (* c (denominator b)) (* d (denominator b))
+         (* e (denominator b)) (* f (denominator b)) (* g (denominator b)) (* h (denominator b))))))
+    (rational
+     (make-bilft
+      (numerator a)         (* b (denominator a)) (* c (denominator a)) (* d (denominator a))
+      (* e (denominator a)) (* f (denominator a)) (* g (denominator a)) (* h (denominator a))))))
+) ;; End EVAL-WHEN
 
 ;;;
 ;;; Functions that need access to the coefficients
@@ -858,127 +867,88 @@
 ;;; Workhorse functions
 ;;;
 
-(defun compose-lfts (lft &rest lfts)
-  (fold-left #'compose-lft-lft
-             lft
-             lfts))
-
-(defun lft-zero-p (lft if-zero if-not-zero if-unknown)
-  (if (pole-negative-p lft)
-      (let ((bound-a (funcall lft 0))
-            (bound-b (funcall lft 'infinity)))
-        (cond ((eq bound-a 'infinity) (funcall if-unknown))
-              ((eq bound-b 'infinity) (funcall if-unknown))
-              ((and (zerop bound-a)
-                    (zerop bound-b))
-               (funcall if-zero))
-              ((or (and (plusp bound-a)
-                        (plusp bound-b))
-                   (and (minusp bound-a)
-                        (minusp bound-b)))
-               (funcall if-not-zero))
-              (t (funcall if-unknown))))
-      (funcall if-unknown)))
-
-(defun lft-minus-p (lft if-minus if-plus if-unknown)
+(defun lft-zero-p (lft if-always-zero if-never-zero if-sometimes-zero)
   (check-type lft lft)
-  (if (pole-negative-p lft)
-      (let ((bound-a (funcall lft 0))
-            (bound-b (funcall lft 'infinity)))
-        (cond ((eq bound-a 'infinity) (funcall if-unknown))
-              ((eq bound-b 'infinity) (funcall if-unknown))
-              ((and (or (minusp bound-a) (minusp bound-b))
-                    (not (plusp bound-a))
-                    (not (plusp bound-b)))
-               (funcall if-minus))
-              ((and (or (plusp bound-a) (plusp bound-b))
-                    (not (minusp bound-a))
-                    (not (minusp bound-b)))
-               (funcall if-plus))
-              (t (funcall if-unknown))))
-      (funcall if-unknown)))
+  (cond ((and (zerop (slot-value lft 'a))
+              (zerop (slot-value lft 'b))
+              (or (plusp (slot-value lft 'c))
+                  (plusp (slot-value lft 'd))))
+         (funcall if-always-zero))
+        ((and (not (minusp (slot-value lft 'd)))
+              (or (and (plusp (slot-value lft 'a))
+                       (plusp (slot-value lft 'b)))
+                  (and (minusp (slot-value lft 'a))
+                       (minusp (slot-value lft 'b)))))
+         (funcall if-never-zero))
+        (t (funcall if-sometimes-zero))))
 
-(defun lft-plus-p (lft if-plus if-not-plus if-unknown)
+(defun lft-minus-p (lft if-always-minus if-never-minus if-unknown)
   (check-type lft lft)
-  (if (pole-negative-p lft)
-      (let ((bound-a (funcall lft 0))
-            (bound-b (funcall lft 'infinity)))
-        (cond ((eq bound-a 'infinity)
-               (cond ((eq bound-b 'infinity) (funcall if-unknown))
-                     ((plusp bound-b) (funcall if-plus))
-                     (t (funcall if-not-plus))))
-              ((eq bound-b 'infinity)
-               (if (plusp bound-a)
-                   (funcall if-plus)
-                   (funcall if-not-plus)))
-              ((and (plusp bound-a)
-                    (plusp bound-b))
-               (funcall if-plus))
-              (t (funcall if-not-plus))))
-      (funcall if-unknown)))
+  (cond ((minusp (slot-value lft 'd)) (funcall if-unknown))
+        ((and (minusp (slot-value lft 'a))
+              (minusp (slot-value lft 'b)))
+         (funcall if-minus))
+        ((and (not (minusp (slot-value lft 'a)))
+              (not (minusp (slot-value lft 'b))))
+         (funcall if-never-minus))
+        (t (funcall if-unknown))))
 
-(defun lft-non-negative-p (lft if-non-negative if-not-non-negative if-unknown)
+(defun lft-plus-p (lft if-always-plus if-never-plus if-unknown)
   (check-type lft lft)
-  (if (pole-negative-p lft)
-      (let ((bound-a (funcall lft 0))
-            (bound-b (funcall lft 'infinity)))
-        (cond ((eq bound-a 'infinity)
-               (cond ((eq bound-b 'infinity) (funcall if-unknown))
-                     ((not (minusp bound-b)) (funcall if-non-negative))
-                     (t (funcall if-not-non-negative))))
-              ((eq bound-b 'infinity)
-               (if (minusp bound-a)
-                   (funcall if-not-non-negative)
-                   (funcall if-non-negative)))
-              ((and (not (minusp bound-a))
-                    (not (minusp bound-b)))
-               (funcall if-non-negative))
-              (t (funcall if-not-non-negative))))
-      (funcall if-unknown)))
+  (cond ((minusp (slot-value lft 'd)) (funcall if-unknown))
+        ((and (plusp (slot-value lft 'a))
+              (plusp (slot-value lft 'b)))
+         (funcall if-always-plus))
+        ((and (not (plusp (slot-value lft 'a)))
+              (not (plusp (slot-value lft 'b))))
+         (funcall if-never-plus))
+        (t (funcall if-unknown))))
+
+(defun lft-non-negative-p (lft if-non-negative if-never-non-negative if-unknown)
+  (check-type lft lft)
+  (cond ((minusp (slot-value lft 'd)) (funcall if-unknown))
+        ((and (not (minusp (slot-value lft 'a)))
+              (not (minusp (slot-value lft 'b))))
+         (funcall if-non-negative))
+        ((and (minusp (slot-value lft 'a))
+              (minusp (slot-value lft 'b)))
+         (funcall if-never-non-negative))
+        (t (funcall if-unknown))))
 
 (defun lft-less-than-rat (lft rat if-less-than if-not-less-than if-unknown)
   (check-type lft lft)
-  (if (pole-negative-p lft)
-      (let ((bound-a (funcall lft 0))
-            (bound-b (funcall lft 'infinity)))
-        (cond ((eq bound-a 'infinity)
-               (cond ((eq bound-b 'infinity) (funcall if-unknown))
-                     ((>= bound-b rat) (funcall if-not-less-than))
-                     (t (funcall if-unknown))))
-              ((eq bound-b 'infinity)
-               (if (>= bound-a rat)
-                   (funcall if-not-less-than)
-                   (funcall if-unknown)))
-              ((and (< bound-a rat)
-                    (< bound-b rat))
-               (funcall if-less-than))
-              ((and (> bound-a rat)
-                    (> bound-b rat))
-               (funcall if-not-less-than))
-              (t (funcall if-unknown))))
-      (funcall if-unknown)))
+  (cond ((minusp (slot-value lft 'd)) (funcall if-unknown))
+        ((and (plusp (slot-value lft 'c))
+              ;; a/c < n/d , ad < nc
+              (< (* (slot-value lft 'a) (denominator rat))
+                 (* (slot-value lft 'c) (numerator rat)))
+              (plusp (slot-value lft 'd))
+              (< (* (slot-value lft 'b) (denominator rat))
+                 (* (slot-value lft 'd) (numerator rat))))
+         (funcall if-less-than))
+        ((and (not (< (* (slot-value lft 'a) (denominator rat))
+                      (* (slot-value lft 'c) (numerator rat))))
+              (not (< (* (slot-value lft 'b) (denominator rat))
+                      (* (slot-value lft 'd) (numerator rat)))))
+         (funcall if-not-less-than))
+        (t (funcall if-unknown))))
 
 (defun lft-greater-than-rat (lft rat if-greater-than if-not-greater-than if-unknown)
   (check-type lft lft)
-  (if (pole-negative-p lft)
-      (let ((bound-a (funcall lft 0))
-            (bound-b (funcall lft 'infinity)))
-        (cond ((eq bound-a 'infinity)
-               (cond ((eq bound-b 'infinity) (funcall if-unknown))
-                     ((> bound-b rat) (funcall if-greater-than))
-                     (t (funcall if-unknown))))
-              ((eq bound-b 'infinity)
-               (if (> bound-a rat)
-                   (funcall if-greater-than)
-                   (funcall if-unknown)))
-              ((and (> bound-a rat)
-                    (> bound-b rat))
-               (funcall if-greater-than))
-              ((and (< bound-a rat)
-                    (< bound-b rat))
-               (funcall if-not-greater-than))
-              (t (funcall if-unknown))))
-      (funcall if-unknown)))
+  (cond ((minusp (slot-value lft 'd)) (funcall if-unknown))
+        ((and (> (* (slot-value lft 'a) (denominator rat))
+                 (* (slot-value lft 'c) (numerator rat)))
+              (> (* (slot-value lft 'b) (denominator rat))
+                 (* (slot-value lft 'd) (numerator rat))))
+         (funcall if-greater-than))
+        ((and (or (zerop (slot-value lft 'c))
+                 (not (> (* (slot-value lft 'a) (denominator rat))
+                         (* (slot-value lft 'c) (numerator rat)))))
+             (or (zerop (slot-value lft 'd))
+                 (> (* (slot-value lft 'b) (denominator rat))
+                    (* (slot-value lft 'd) (numerator rat)))))
+         (funcall if-not-greater-than))
+        (t (funcall if-unknown))))
 
 (defun lft-add-rat (rat)
   (make-lft 1 rat
@@ -1010,46 +980,34 @@
 
 (defun lft-truncate (lft if-success if-failure)
   (check-type lft lft)
-  (if (pole-negative-p lft)
-      (let ((lower-bound (funcall lft 0))
-            (upper-bound (funcall lft 'infinity)))
-        (if (and (numberp lower-bound)
-                 (numberp upper-bound))
-            (let ((lower-floor (truncate lower-bound))
-                  (upper-floor (truncate upper-bound)))
-              (if (= lower-floor upper-floor)
-                  (funcall if-success lower-floor (x- lft lower-floor))
-                  (funcall if-failure)))
+  (if (and (plusp (slot-value lft 'c))
+           (plusp (slot-value lft 'd)))
+      (let ((t1 (truncate (slot-value lft 'a) (slot-value lft 'c)))
+            (t2 (truncate (slot-value lft 'b) (slot-value lft 'd))))
+        (if (= t1 t2)
+            (funcall if-success t1 (x- lft t1))
             (funcall if-failure)))
       (funcall if-failure)))
 
 (defun lft->single (lft if-success if-failure)
   (check-type lft lft)
-  (if (pole-negative-p lft)
-      (let ((lower-bound (funcall lft 0))
-            (upper-bound (funcall lft 'infinity)))
-        (if (and (numberp lower-bound)
-                 (numberp upper-bound))
-            (let ((lower-single (coerce lower-bound 'single-float))
-                  (upper-single (coerce upper-bound 'single-float)))
-              (if (= lower-single upper-single)
-                  (funcall if-success lower-single)
-                  (funcall if-failure)))
+  (if (and (plusp (slot-value lft 'c))
+           (plusp (slot-value lft 'd)))
+      (let ((s1 (coerce (/ (slot-value lft 'a) (slot-value lft 'c)) 'single-float))
+            (s2 (coerce (/ (slot-value lft 'b) (slot-value lft 'd)) 'single-float)))
+        (if (= s1 s2)
+            (funcall if-success s1)
             (funcall if-failure)))
       (funcall if-failure)))
 
 (defun lft->double (lft if-success if-failure)
   (check-type lft lft)
-  (if (pole-negative-p lft)
-      (let ((lower-bound (funcall lft 0))
-            (upper-bound (funcall lft 'infinity)))
-        (if (and (numberp lower-bound)
-                 (numberp upper-bound))
-            (let ((lower-double (coerce lower-bound 'double-float))
-                  (upper-double (coerce upper-bound 'double-float)))
-              (if (= lower-double upper-double)
-                  (funcall if-success lower-double)
-                  (funcall if-failure)))
+  (if (and (plusp (slot-value lft 'c))
+           (plusp (slot-value lft 'd)))
+      (let ((d1 (coerce (/ (slot-value lft 'a) (slot-value lft 'c)) 'double-float))
+            (d2 (coerce (/ (slot-value lft 'b) (slot-value lft 'd)) 'double-float)))
+        (if (= d1 d2)
+            (funcall if-success d1)
             (funcall if-failure)))
       (funcall if-failure)))
 
@@ -1150,21 +1108,15 @@
 
 (defun bilft-truncate (bilft if-success if-failure)
   (check-type bilft bilft)
-  (if (poles-negative-p bilft)
-      (let ((bound-a (funcall bilft 0 0))
-            (bound-b (funcall bilft 0 'infinity))
-            (bound-c (funcall bilft 'infinity 0))
-            (bound-d (funcall bilft 'infinity 'infinity)))
-        (if (and (numberp bound-a)
-                 (numberp bound-b)
-                 (numberp bound-c)
-                 (numberp bound-d))
-            (let ((floor-a (truncate bound-a))
-                  (floor-b (truncate bound-b))
-                  (floor-c (truncate bound-c))
-                  (floor-d (truncate bound-d)))
-              (if (= floor-a floor-b floor-c floor-d)
-                  (funcall if-success floor-a (x- bilft floor-a))
-                  (funcall if-failure)))
+  (if (and (plusp (slot-value bilft 'e))
+           (plusp (slot-value bilft 'f))
+           (plusp (slot-value bilft 'g))
+           (plusp (slot-value bilft 'h)))
+      (let ((t1 (truncate (slot-value bilft 'a) (slot-value bilft 'e)))
+            (t2 (truncate (slot-value bilft 'b) (slot-value bilft 'f)))
+            (t3 (truncate (slot-value bilft 'c) (slot-value bilft 'g)))
+            (t4 (truncate (slot-value bilft 'd) (slot-value bilft 'h))))
+        (if (= t1 t2 t3 t4)
+            (funcall if-success t1 (x- bilft t1))
             (funcall if-failure)))
       (funcall if-failure)))

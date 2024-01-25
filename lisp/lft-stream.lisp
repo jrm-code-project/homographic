@@ -1,5 +1,8 @@
 ;;; -*- Lisp -*-
 
+;;; The algorithms implemented here were developed by Peter Potts in
+;;; his doctoral thesis.
+
 (in-package "LINEAR-FRACTIONAL-TRANSFORMATION")
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
