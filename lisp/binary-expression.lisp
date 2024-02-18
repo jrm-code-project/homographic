@@ -149,15 +149,15 @@
                   :delayed-left (stream-delayed-cdr x)
                   :delayed-right (stream-delayed-cdr y))))
 
-(defun unfold-expression-tree (counter generate left)
+(defun unfold-expression-tree-1 (left generate counter)
   (funcall (funcall generate counter)
            left
-           (delay-lft-stream (unfold-expression-tree (+ counter 1) generate left))))
+           (delay-lft-stream (unfold-expression-tree-1 left generate (+ counter 1)))))
 
-(defun unfold-expression-tree-1 (root-bilft generate left)
+(defun unfold-expression-tree (root-bilft left generate)
   (funcall root-bilft
            left
-           (delay-lft-stream (unfold-expression-tree 1 generate left))))
+           (delay-lft-stream (unfold-expression-tree-1 left generate 1))))
 
 (defmethod add2 ((left lft-stream) (right lft-stream))
   (bilft-add left right))
@@ -169,35 +169,37 @@
 ;;; Peter Potts.
 
 (defun %atan-lft-stream (lft-stream)
-  (unfold-expression-tree-1
+  (unfold-expression-tree
    (make-bilft 1 1 -1 -1
                2 0  0  2)
+   (funcall (inverse-lft lft-sign-zero) lft-stream)
    (lambda (n)
      (make-bilft (+ (* 2 n) 1) n 0 (+ n 1)
-                 (+ n 1)       0 n (+ (* 2 n) 1)))
-   (funcall (inverse-lft lft-sign-zero) lft-stream)))
+                 (+ n 1)       0 n (+ (* 2 n) 1)))))
 
 (defun %exp-lft-stream (lft-stream)
-  (unfold-expression-tree
-   0 (lambda (n)
+  (unfold-expression-tree-1
+   (funcall (inverse-lft lft-sign-zero) lft-stream)
+   (lambda (n)
        (make-bilft (+ (* 2 n) 2) (+ (* 2 n) 1) (* 2 n) (+ (* 2 n) 1)
                    (+ (* 2 n) 1) (* 2 n) (+ (* 2 n) 1) (+ (* 2 n) 2)))
-   (funcall (inverse-lft lft-sign-zero) lft-stream)))
+   0))
 
 (defun %log-lft-stream (lft-stream)
-  (unfold-expression-tree-1
+  (unfold-expression-tree
    (make-bilft 1 1 -1 -1
                0 1  1  0)
+   lft-stream
    (lambda (n)
      (make-bilft n (+ (* n 2) 1)       (+ n 1) 0
-                 0       (+ n 1) (+ (* n 2) 1) n))
-   lft-stream))
+                 0       (+ n 1) (+ (* n 2) 1) n))))
 
 (defun %sqrt-lft-stream (lft-stream)
-  ;; (unfold-expression-tree
-  ;;  0 (constantly (make-bilft 1 2 1 0
-  ;;                            0 1 2 1))
-  ;;  lft-stream)
+  ;; (unfold-expression-tree-1
+  ;;   lft-stream
+  ;;   (constantly (make-bilft 1 2 1 0
+  ;;                           0 1 2 1))
+  ;;   0)
   (let ((stream nil))
     (setq stream
           (funcall (make-bilft 1 2 1 0
@@ -210,13 +212,13 @@
   (bilft-multiply lft-stream lft-stream))
 
 (defun %tan-lft-stream (lft-stream)
-  (unfold-expression-tree-1
+  (unfold-expression-tree
    (make-bilft 1 1 -1 -1
                2 0  0  2)
+   (funcall (inverse-lft lft-sign-zero) lft-stream)
    (lambda (n)
      (make-bilft (+ (* 2 n) 1) (- (* 2 n) 1) (+ (* 2 n) 1) (+ (* 2 n) 3)
-                 (+ (* 2 n) 3) (+ (* 2 n) 1) (- (* 2 n) 1) (+ (* 2 n) 1)))
-   (funcall (inverse-lft lft-sign-zero) lft-stream)))
+                 (+ (* 2 n) 3) (+ (* 2 n) 1) (- (* 2 n) 1) (+ (* 2 n) 1)))))
 
 (defun %rat-tan (x)
   (check-type x (rational -1 1))

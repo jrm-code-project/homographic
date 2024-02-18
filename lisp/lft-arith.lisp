@@ -29,7 +29,7 @@
      (reciprocal (exp-lft-stream (negate refined))))
    (lambda (refined)
      (lft-stream-greater-than-rat
-      refined 1
+      refined 2
       (lambda (refined*)
         (%square-lft-stream
          (exp-lft-stream
