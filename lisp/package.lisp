@@ -11,7 +11,7 @@
                           "MULTIPLE-VALUE-BIND")
   (:shadowing-import-from "STREAM" "SCAN-STREAM" "STREAM")
   (:shadow "PI")
-  (:use "COMMON-LISP" "NAMED-LET" "PROMISE" "SERIES" "STREAM" "UTILITIES")
+  (:use "COMMON-LISP" "FOLD" "NAMED-LET" "PROMISE" "SERIES" "STREAM" "UTILITIES")
   (:export
    "->CF-STREAM"
    "2PI"

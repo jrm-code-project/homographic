@@ -667,7 +667,7 @@
                       (float (make-bilft a b c d e f (rational g) h))
                       (integer
                        (etypecase h
-                         (float (make-biltf a b c d e f g (rational h)))
+                         (float (make-bilft a b c d e f g (rational h)))
                          (integer
                           (%make-bilft a b c d
                                        e f g h))
@@ -887,7 +887,7 @@
   (cond ((minusp (slot-value lft 'd)) (funcall if-unknown))
         ((and (minusp (slot-value lft 'a))
               (minusp (slot-value lft 'b)))
-         (funcall if-minus))
+         (funcall if-always-minus))
         ((and (not (minusp (slot-value lft 'a)))
               (not (minusp (slot-value lft 'b))))
          (funcall if-never-minus))

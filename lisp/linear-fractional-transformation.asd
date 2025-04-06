@@ -1,7 +1,7 @@
 ;;; -*- Lisp -*-
 
 (defsystem "linear-fractional-transformation"
-  :depends-on ("named-let" "promise" "series" "stream" "utilities")
+  :depends-on ("fold" "named-let" "promise" "series" "stream" "utilities")
   :components ((:file "package")
                (:file "generics" :depends-on ("package"))
                (:file "lft" :depends-on ("generics" "package"))

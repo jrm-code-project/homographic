@@ -6,7 +6,7 @@
 (in-package "LINEAR-FRACTIONAL-TRANSFORMATION")
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-(defclass lft-stream (stream:stream)
+(defclass lft-stream (stream::stream)
   ())
 
 (defmacro cons-lft-stream (lft tail)

@@ -4,7 +4,7 @@
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
 
-(defclass cf-stream (stream:stream)
+(defclass cf-stream (stream::stream)
   ())
 
 (defmacro cons-cf-stream (stream-car stream-cdr)
