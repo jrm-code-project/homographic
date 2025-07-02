@@ -51,16 +51,16 @@
                  :car (funcall lft (stream-car arg))
                  :delayed-cdr (stream-delayed-cdr arg)))
 
-(defmethod add2 ((left rational) (right lft-stream))
+(defmethod add2 ((left cl:rational) (right lft-stream))
   (funcall (lft-add-rat left) right))
 
-(defmethod add2 ((left lft-stream) (right rational))
+(defmethod add2 ((left lft-stream) (right cl:rational))
   (funcall (lft-add-rat right) left))
 
-(defmethod mul2 ((left rational) (right lft-stream))
+(defmethod multiply2 ((left cl:rational) (right lft-stream))
   (funcall (lft-multiply-by-rat left) right))
 
-(defmethod mul2 ((left lft-stream) (right rational))
+(defmethod multiply2 ((left lft-stream) (right cl:rational))
   (funcall (lft-multiply-by-rat right) left))
 
 (defmethod negate ((object lft-stream))
@@ -142,7 +142,7 @@
         (cons-stream integer-part
                      (if (empty-stream? fractional-part)
                          the-empty-stream
-                         (lft-stream->radix-stream (x* fractional-part radix) radix))))))
+                         (lft-stream->radix-stream (* fractional-part radix) radix))))))
 
 (defvar *print-lft-stream-length* 20)
 
@@ -320,9 +320,11 @@
 (defgeneric ->lft-stream (number)
   (:method ((number integer))
     (%rat->lft-stream number 1))
-  (:method ((number rational))
+  (:method ((number cl:rational))
     (%rat->lft-stream (numerator number) (denominator number)))
-  (:method ((number float))
+  (:method ((number single-float))
+    (->lft-stream (rational number)))
+  (:method ((number double-float))
     (->lft-stream (rational number))))
 
 ;;; Reinhold Heckmann
@@ -335,11 +337,11 @@
                      (cons-lft-stream lft-digit-high (rollover (- d) (* den 4)))))))
       (cons-lft-stream lft-sign-positive (rollover p q)))))
 
-(defmethod x-sqrt ((number rational))
+(defmethod sqrt ((number cl:rational))
   (%sqrt-rat (numerator number) (denominator number)))
 
 (defun %exp-rat (x)
-  (check-type x (rational (1/2) 2))
+  (check-type x (cl:rational (1/2) 2))
   (cons-lft-stream
    lft-sign-positive
    (cons-lft-stream
@@ -351,7 +353,7 @@
                     (naturals)))))
 
 (defun %log-rat (x)
-  (check-type x (rational (1) *))
+  (check-type x (cl:rational (1) cl:*))
   (cons-lft-stream
    lft-sign-positive
    (lft-stream-map
@@ -363,8 +365,8 @@
     (integers))))
 
 (defun %rat-pow (x y)
-  (check-type x (rational (1) *))
-  (check-type y (rational (0) (1)))
+  (check-type x (cl:rational (1) cl:*))
+  (check-type y (cl:rational (0) (1)))
   (cons-lft-stream
    lft-sign-positive
    (cons-lft-stream
@@ -406,7 +408,7 @@
                    (big-k-stream (stream-cdr numerators) (stream-cdr denominators))))
 
 (defun %rat-atan (z)
-  (check-type z (rational (0) 1))
+  (check-type z (cl:rational (0) 1))
   (let ((z-squared (square z)))
     (cons-lft-stream (make-lft 0 z
                                1 1)
@@ -416,7 +418,7 @@
                                    (stream-cdr (odds))))))
 
 (defun %rat-tan (x)
-  (check-type x (rational (0) 1))
+  (check-type x (cl:rational (0) 1))
   (lft-stream-map
    (lambda (n)
      (funcall (make-lft 0 x

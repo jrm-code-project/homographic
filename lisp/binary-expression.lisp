@@ -162,7 +162,7 @@
 (defmethod add2 ((left lft-stream) (right lft-stream))
   (bilft-add left right))
 
-(defmethod mul2 ((left lft-stream) (right lft-stream))
+(defmethod multiply2 ((left lft-stream) (right lft-stream))
   (bilft-multiply left right))
 
 ;;; The algorithms for unfolded expression trees were developed by
@@ -221,7 +221,7 @@
                  (+ (* 2 n) 3) (+ (* 2 n) 1) (- (* 2 n) 1) (+ (* 2 n) 1)))))
 
 (defun %rat-tan (x)
-  (check-type x (rational -1 1))
+  (check-type x (cl:rational -1 1))
   (%tan-lft-stream
    (cf-stream->lft-stream
     (rational->cf-stream x))))

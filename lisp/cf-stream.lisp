@@ -72,9 +72,11 @@
 (defgeneric ->cf-stream (object)
   (:method ((object lft-stream))
     (lft-stream->cf-stream object))
-  (:method ((object rational))
+  (:method ((object ratio))
     (rational->cf-stream object))
-  (:method ((object float))
+  (:method ((object single-float))
+    (rational->cf-stream (rational object)))
+  (:method ((object double-float))
     (rational->cf-stream (rational object))))
 
 (defun cf-stream->rational (cf-stream)

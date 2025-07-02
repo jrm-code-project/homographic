@@ -238,7 +238,7 @@
   (check-type c integer)
   (check-type d integer)
   (check-type numerator integer)
-  (check-type denominator (integer 0 *))
+  (check-type denominator (integer 0 cl:*))
   (let ((result-numerator   (+ (* a numerator) (* b denominator)))
         (result-denominator (+ (* c numerator) (* d denominator))))
     (cond ((not (zerop result-denominator)) (/ result-numerator result-denominator))
@@ -260,9 +260,9 @@
   (check-type g integer)
   (check-type h integer)
   (check-type m-num integer)
-  (check-type m-den (integer 0 *))
+  (check-type m-den (integer 0 cl:*))
   (check-type n-num integer)
-  (check-type n-den (integer 0 *))
+  (check-type n-den (integer 0 cl:*))
   (let ((result-numerator   (+ (* a m-num n-num) (* b m-num n-den) (* c m-den n-num) (* d m-den n-den)))
         (result-denominator (+ (* e m-num n-num) (* f m-num n-den) (* g m-den n-num) (* h m-den n-den))))
     (cond ((not (zerop result-denominator)) (/ result-numerator result-denominator))
@@ -383,13 +383,14 @@
                                 (slot-value lft 'c)
                                 (slot-value lft 'd)
                                 arg 1))
-  (:method (lft (arg rational)) (evaluate-lft
+  (:method (lft (arg cl:rational)) (evaluate-lft
                                  (slot-value lft 'a)
                                  (slot-value lft 'b)
                                  (slot-value lft 'c)
                                  (slot-value lft 'd)
                                  (numerator arg) (denominator arg)))
-  (:method (lft (arg float)) (funcall-lft lft (rational arg)))
+  (:method (lft (arg single-float)) (funcall-lft lft (rational arg)))
+  (:method (lft (arg double-float)) (funcall-lft lft (rational arg)))
   )
 
 (defmethod initialize-instance :after ((instance lft) &rest initargs)
@@ -445,7 +446,7 @@
      (slot-value bilft 'a) (slot-value bilft 'b) (slot-value bilft 'c) (slot-value bilft 'd)
      (slot-value bilft 'e) (slot-value bilft 'f) (slot-value bilft 'g) (slot-value bilft 'h)
      1 0 y 1))
-  (:method (bilft (x (eql 'infinity)) (y rational))
+  (:method (bilft (x (eql 'infinity)) (y cl:rational))
     (evaluate-bilft
      (slot-value bilft 'a) (slot-value bilft 'b) (slot-value bilft 'c) (slot-value bilft 'd)
      (slot-value bilft 'e) (slot-value bilft 'f) (slot-value bilft 'g) (slot-value bilft 'h)
@@ -460,29 +461,33 @@
      (slot-value bilft 'a) (slot-value bilft 'b) (slot-value bilft 'c) (slot-value bilft 'd)
      (slot-value bilft 'e) (slot-value bilft 'f) (slot-value bilft 'g) (slot-value bilft 'h)
      x 1 y 1))
-  (:method (bilft (x integer) (y rational))
+  (:method (bilft (x integer) (y cl:rational))
     (evaluate-bilft
      (slot-value bilft 'a) (slot-value bilft 'b) (slot-value bilft 'c) (slot-value bilft 'd)
      (slot-value bilft 'e) (slot-value bilft 'f) (slot-value bilft 'g) (slot-value bilft 'h)
      x 1 (numerator y) (denominator y)))
-  (:method (bilft (x rational) (y (eql 'infinity)))
+  (:method (bilft (x cl:rational) (y (eql 'infinity)))
     (evaluate-bilft
      (slot-value bilft 'a) (slot-value bilft 'b) (slot-value bilft 'c) (slot-value bilft 'd)
      (slot-value bilft 'e) (slot-value bilft 'f) (slot-value bilft 'g) (slot-value bilft 'h)
      (numerator x) (denominator x) 1 0))
-  (:method (bilft (x rational) (y integer))
+  (:method (bilft (x cl:rational) (y integer))
     (evaluate-bilft
      (slot-value bilft 'a) (slot-value bilft 'b) (slot-value bilft 'c) (slot-value bilft 'd)
      (slot-value bilft 'e) (slot-value bilft 'f) (slot-value bilft 'g) (slot-value bilft 'h)
      (numerator x) (denominator x) y 1))
-  (:method (bilft (x rational) (y rational))
+  (:method (bilft (x cl:rational) (y cl:rational))
     (evaluate-bilft
      (slot-value bilft 'a) (slot-value bilft 'b) (slot-value bilft 'c) (slot-value bilft 'd)
      (slot-value bilft 'e) (slot-value bilft 'f) (slot-value bilft 'g) (slot-value bilft 'h)
      (numerator x) (denominator x) (numerator y) (denominator y)))
-  (:method (bilft (x float) y)
+  (:method (bilft (x single-float) y)
     (funcall bilft (rational x) y))
-  (:method (bilft x (y float))
+  (:method (bilft (x double-float) y)
+    (funcall bilft (rational x) y))
+  (:method (bilft x (y single-float))
+    (funcall bilft x (rational y)))
+    (:method (bilft x (y double-float))
     (funcall bilft x (rational y))))
 
 (defmethod initialize-instance :after ((instance bilft) &rest initargs)
@@ -550,26 +555,30 @@
 
 (defun make-lft (a b c d)
   (etypecase a
-    (float (make-lft (rational a) b c d))
+    (single-float (make-lft (rational a) b c d))
+    (double-float (make-lft (rational a) b c d))
     (integer
      (etypecase b
-       (float (make-lft a (rational b) c d))
+       (single-float (make-lft a (rational b) c d))
+       (double-float (make-lft a (rational b) c d))
        (integer
         (etypecase c
-          (float (make-lft a b (rational c) d))
+          (single-float (make-lft a b (rational c) d))
+          (double-float (make-lft a b (rational c) d))
           (integer
            (etypecase d
-             (float (make-lft a b c (rational d)))
+             (single-float (make-lft a b c (rational d)))
+             (double-float (make-lft a b c (rational d)))
              (integer (%make-lft a b
                                  c d))
-             (rational (make-lft (* a (denominator d)) (* b (denominator d))
-                                 (* c (denominator d)) (numerator d)))))
-          (rational (make-lft (* a (denominator c)) (* b (denominator c))
-                              (numerator c)         (* d (denominator c))))))
-       (rational (make-lft (* a (denominator b)) (numerator b)
-                           (* c (denominator b)) (* d (denominator b))))))
-    (rational (make-lft (numerator a)         (* b (denominator a))
-                        (* c (denominator a)) (* d (denominator a))))))
+             (cl:rational (make-lft (* a (denominator d)) (* b (denominator d))
+                              (* c (denominator d)) (numerator d)))))
+          (cl:rational (make-lft (* a (denominator c)) (* b (denominator c))
+                           (numerator c)         (* d (denominator c))))))
+       (cl:rational (make-lft (* a (denominator b)) (numerator b)
+                        (* c (denominator b)) (* d (denominator b))))))
+    (cl:rational (make-lft (numerator a)         (* b (denominator a))
+                     (* c (denominator a)) (* d (denominator a))))))
 
 ) ;; eval-when
 
@@ -646,60 +655,68 @@
 (defun make-bilft (a b c d
                    e f g h)
   (etypecase a
-    (float (make-bilft (rational a) b c d e f g h))
+    (single-float (make-bilft (rational a) b c d e f g h))
+    (double-float (make-bilft (rational a) b c d e f g h))
     (integer
      (etypecase b
-       (float (make-bilft a (rational b) c d e f g h))
+       (single-float (make-bilft a (rational b) c d e f g h))
+       (double-float (make-bilft a (rational b) c d e f g h))
        (integer
         (etypecase c
-          (float (make-bilft a b (rational c) d e f g h))
+          (single-float (make-bilft a b (rational c) d e f g h))
+          (double-float (make-bilft a b (rational c) d e f g h))
           (integer
            (etypecase d
-             (float (make-bilft a b c (rational d) e f g h))
+             (single-float (make-bilft a b c (rational d) e f g h))
+             (double-float (make-bilft a b c (rational d) e f g h))
              (integer
               (etypecase e
-                (float (make-bilft a b c d (rational e) f g h))
+                (single-float (make-bilft a b c d (rational e) f g h))
+                (double-float (make-bilft a b c d (rational e) f g h))
                 (integer
                  (etypecase f
-                   (float (make-bilft a b c d e (rational f) g h))
+                   (single-float (make-bilft a b c d e (rational f) g h))
+                   (double-float (make-bilft a b c d e (rational f) g h))
                    (integer
                     (etypecase g
-                      (float (make-bilft a b c d e f (rational g) h))
+                      (single-float (make-bilft a b c d e f (rational g) h))
+                      (double-float (make-bilft a b c d e f (rational g) h))
                       (integer
                        (etypecase h
-                         (float (make-bilft a b c d e f g (rational h)))
+                         (single-float (make-bilft a b c d e f g (rational h)))
+                         (double-float (make-bilft a b c d e f g (rational h)))
                          (integer
                           (%make-bilft a b c d
                                        e f g h))
-                         (rational
+                         (cl:rational
                           (make-bilft
                            (* a (denominator h)) (* b (denominator h)) (* c (denominator h)) (* d (denominator h))
                            (* e (denominator h)) (* f (denominator h)) (* g (denominator h)) (numerator h)))))
-                      (rational
+                      (cl:rational
                        (make-bilft
                         (* a (denominator g)) (* b (denominator g)) (* c (denominator g)) (* d (denominator g))
                         (* e (denominator g)) (* f (denominator g)) (numerator g)         (* h (denominator g))))))
-                   (rational
+                   (cl:rational
                     (make-bilft
                      (* a (denominator f)) (* b (denominator f)) (* c (denominator f)) (* d (denominator f))
                      (* e (denominator f)) (numerator f)         (* g (denominator f)) (* h (denominator f))))))
-                (rational
+                (cl:rational
                  (make-bilft
                   (* a (denominator e)) (* b (denominator e)) (* c (denominator e)) (* d (denominator e))
                   (numerator e)         (* f (denominator e)) (* g (denominator e)) (* h (denominator e))))))
-             (rational
+             (cl:rational
               (make-bilft
                (* a (denominator d)) (* b (denominator d)) (* c (denominator d)) (numerator d)
                (* e (denominator d)) (* f (denominator d)) (* g (denominator d)) (* h (denominator d))))))
-          (rational
+          (cl:rational
            (make-bilft
             (* a (denominator c)) (* b (denominator c)) (numerator c) (* d (denominator c))
             (* e (denominator c)) (* f (denominator c)) (* g (denominator c)) (* h (denominator c))))))
-       (rational
+       (cl:rational
         (make-bilft
          (* a (denominator b)) (numerator b)         (* c (denominator b)) (* d (denominator b))
          (* e (denominator b)) (* f (denominator b)) (* g (denominator b)) (* h (denominator b))))))
-    (rational
+    (cl:rational
      (make-bilft
       (numerator a)         (* b (denominator a)) (* c (denominator a)) (* d (denominator a))
       (* e (denominator a)) (* f (denominator a)) (* g (denominator a)) (* h (denominator a))))))
@@ -835,6 +852,12 @@
 
                       #'%make-bilft)))
 
+(defmethod negate ((bilft bilft))
+  (funcall lft-negate bilft))
+
+(defmethod reciprocal ((bilft bilft))
+  (funcall lft-reciprocal bilft))
+
 (defgeneric range? (object)
   (:method ((object lft))
     (2x2-matrix-range? (slot-value object 'a) (slot-value object 'b)
@@ -964,16 +987,16 @@
   (make-lft 1 0
             0 rat))
 
-(defmethod add2 ((left lft) (right rational))
+(defmethod add2 ((left lft) (right cl:rational))
   (funcall (lft-add-rat right) left))
 
-(defmethod add2 ((left rational) (right lft))
+(defmethod add2 ((left cl:rational) (right lft))
   (funcall (lft-add-rat left) right))
 
-(defmethod mul2 ((left lft) (right rational))
+(defmethod multiply2 ((left lft) (right cl:rational))
   (funcall (lft-multiply-by-rat right) left))
 
-(defmethod mul2 ((left rational) (right lft))
+(defmethod multiply2 ((left cl:rational) (right lft))
   (funcall (lft-multiply-by-rat left) right))
 
 (defun lft-truncate (lft if-success if-failure)
@@ -983,7 +1006,7 @@
       (let ((t1 (truncate (slot-value lft 'a) (slot-value lft 'c)))
             (t2 (truncate (slot-value lft 'b) (slot-value lft 'd))))
         (if (= t1 t2)
-            (funcall if-success t1 (x- lft t1))
+            (funcall if-success t1 (- lft t1))
             (funcall if-failure)))
       (funcall if-failure)))
 
@@ -1085,23 +1108,23 @@
     right)
    left))
 
-(defmethod mul2 ((left lft) (right lft))
+(defmethod multiply2 ((left lft) (right lft))
   (compose-bilft-lft-x
    (compose-bilft-lft-y
     bilft-multiply
     right)
    left))
 
-(defmethod add2 ((left rational) (right bilft))
+(defmethod add2 ((left cl:rational) (right bilft))
   (compose-lft-bilft (lft-add-rat left) right))
 
-(defmethod add2 ((left bilft) (right rational))
+(defmethod add2 ((left bilft) (right cl:rational))
   (compose-lft-bilft (lft-add-rat right) left))
 
-(defmethod mul2 ((left rational) (right bilft))
+(defmethod multiply2 ((left cl:rational) (right bilft))
   (compose-lft-bilft (lft-multiply-by-rat left) right))
 
-(defmethod mul2 ((left bilft) (right rational))
+(defmethod multiply2 ((left bilft) (right cl:rational))
   (compose-lft-bilft (lft-multiply-by-rat right) left))
 
 (defun bilft-truncate (bilft if-success if-failure)
@@ -1115,6 +1138,6 @@
             (t3 (truncate (slot-value bilft 'c) (slot-value bilft 'g)))
             (t4 (truncate (slot-value bilft 'd) (slot-value bilft 'h))))
         (if (= t1 t2 t3 t4)
-            (funcall if-success t1 (x- bilft t1))
+            (funcall if-success t1 (- bilft t1))
             (funcall if-failure)))
       (funcall if-failure)))
