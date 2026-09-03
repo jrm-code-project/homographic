@@ -9,8 +9,15 @@
 
               c
               d)
-  "Returns TRUE if a/b < c/d"
-  (< (- (* a d) (* b c)) 0))
+  "Returns T if a/b < c/d.  Note: B and D must be positive."
+  (< (* a d) (* b c)))
+
+(define-compiler-macro 2x1v< (a
+                              b
+
+                              c
+                              d)
+  `(< (* ,a ,d) (* ,b ,c)))
 
 (defun 2x2m<2x1v (a b
                   c d
@@ -29,6 +36,26 @@
               e
               f)))
 
+(define-compiler-macro 2x2m<2x1v (a b
+                                  c d
+
+                                  e
+                                  f)
+  (let ((e-var (gensym "E"))
+        (f-var (gensym "F")))
+    `(let ((,e-var ,e)
+           (,f-var ,f))
+       (and (2x1v< ,a
+                   ,c
+
+                   ,e-var
+                   ,f-var)
+            (2x1v< ,b
+                   ,d
+
+                   ,e-var
+                   ,f-var)))))
+
 (defun 2x2m<2x2m (a b
                   c d
 
@@ -46,6 +73,31 @@
                   f
                   h)))
 
+(define-compiler-macro 2x2m<2x2m (a b
+                                  c d
+
+                                  e f
+                                  g h)
+  "Returns T if both a/c and b/d are less than each of e/g and f/h."
+  (let ((a-var (gensym "A"))
+        (b-var (gensym "B"))
+        (c-var (gensym "C"))
+        (d-var (gensym "D")))
+    `(let ((,a-var ,a)
+           (,b-var ,b)
+           (,c-var ,c)
+           (,d-var ,d))
+       (and (2x2m<2x1v ,a-var ,b-var
+                       ,c-var ,d-var
+
+                       ,e
+                       ,g)
+            (2x2m<2x1v ,a-var ,b-var
+                       ,c-var ,d-var
+
+                       ,f
+                       ,h)))))
+
 (defun disjoint? (a b
                   c d
 
@@ -62,6 +114,38 @@
 
                  a b
                  c d)))
+
+(define-compiler-macro disjoint? (a b
+                                  c d
+
+                                  e f
+                                  g h)
+  (let ((a-var (gensym "A"))
+        (b-var (gensym "B"))
+        (c-var (gensym "C"))
+        (d-var (gensym "D"))
+        (e-var (gensym "E"))
+        (f-var (gensym "F"))
+        (g-var (gensym "G"))
+        (h-var (gensym "H")))
+    `(let ((,a-var ,a)
+           (,b-var ,b)
+           (,c-var ,c)
+           (,d-var ,d)
+           (,e-var ,e)
+           (,f-var ,f)
+           (,g-var ,g)
+           (,h-var ,h))
+       (or (2x2m<2x2m ,a-var ,b-var
+                      ,c-var ,d-var
+
+                      ,e-var ,f-var
+                      ,g-var ,h-var)
+           (2x2m<2x2m ,e-var ,f-var
+                      ,g-var ,h-var
+
+                      ,a-var ,b-var
+                      ,c-var ,d-var)))))
 
 (defun tensor-disjoint? (a b c d
                          e f g h)
@@ -232,7 +316,7 @@
 
 (defun evaluate-lft (a b
                      c d numerator denominator)
-  "Return lim x->n (ax + b)/(cx + d)"
+  "Evaluate the Linear Fractional Transformation (ax + b)/(cx + d) at x = numerator/denominator, returning the limit if the denominator evaluates to zero."
   (check-type a integer)
   (check-type b integer)
   (check-type c integer)
@@ -245,7 +329,9 @@
           ((= (* a d) (* b c)) (cond ((not (zerop c)) (/ a c))
                                      ((not (zerop d)) (/ b d))
                                      ((or (not (zerop a)) (not (zerop b))) 'infinity)
-                                     (t (error 'division-by-zero))))
+                                     (t (error 'division-by-zero
+                                               :operation 'evaluate-lft
+                                               :operands (list a b c d numerator denominator)))))
           (t 'infinity))))
 
 (defun evaluate-bilft (a b c d
@@ -399,13 +485,21 @@
 )
 
 (defmethod print-object ((instance lft) stream)
-  (print-unreadable-object (instance stream :type t)
-    (format-lft-equation
-     stream
-     (slot-value instance 'a)
-     (slot-value instance 'b)
-     (slot-value instance 'c)
-     (slot-value instance 'd))))
+  (if (and *print-readably*
+           (eq (get-dispatch-macro-character #\# #\L)
+               (symbol-function 'lft-reader)))
+      (format stream "#L~s"
+              (list (slot-value instance 'a)
+                    (slot-value instance 'b)
+                    (slot-value instance 'c)
+                    (slot-value instance 'd)))
+      (print-unreadable-object (instance stream :type t)
+        (format-lft-equation
+         stream
+         (slot-value instance 'a)
+         (slot-value instance 'b)
+         (slot-value instance 'c)
+         (slot-value instance 'd)))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
 (defclass bilft ()
@@ -572,14 +666,21 @@
              (integer (%make-lft a b
                                  c d))
              (cl:rational (make-lft (* a (denominator d)) (* b (denominator d))
-                              (* c (denominator d)) (numerator d)))))
+                                    (* c (denominator d)) (numerator d)))))
           (cl:rational (make-lft (* a (denominator c)) (* b (denominator c))
-                           (numerator c)         (* d (denominator c))))))
+                                 (numerator c)         (* d (denominator c))))))
        (cl:rational (make-lft (* a (denominator b)) (numerator b)
-                        (* c (denominator b)) (* d (denominator b))))))
+                              (* c (denominator b)) (* d (denominator b))))))
     (cl:rational (make-lft (numerator a)         (* b (denominator a))
-                     (* c (denominator a)) (* d (denominator a))))))
+                           (* c (denominator a)) (* d (denominator a))))))
 
+(defun list->lft (coefficients)
+  ;;(check-type coefficients (cons integer (cons integer (cons integer (cons integer null)))))
+  (apply #'make-lft coefficients))
+
+(defun lft-reader (stream subchar arg)
+  (declare (ignore subchar arg))
+  (list->lft (read stream t nil t)))
 ) ;; eval-when
 
 (defparameter lft-identity
@@ -993,11 +1094,24 @@
 (defmethod add2 ((left cl:rational) (right lft))
   (funcall (lft-add-rat left) right))
 
+(defmethod cube ((x lft))
+  (compose x (compose x x)))
+
+(defmethod expt ((base lft) (exponent integer))
+  (cond ((zerop exponent) lft-identity)
+        ((minusp exponent) (expt (inverse base) (- exponent)))
+        ((evenp exponent) (let ((half (expt base (/ exponent 2))))
+                            (compose half half)))
+        (t (compose base (expt base (1- exponent))))))
+
 (defmethod multiply2 ((left lft) (right cl:rational))
   (funcall (lft-multiply-by-rat right) left))
 
 (defmethod multiply2 ((left cl:rational) (right lft))
   (funcall (lft-multiply-by-rat left) right))
+
+(defmethod square ((x lft))
+  (compose x x))
 
 (defun lft-truncate (lft if-success if-failure)
   (check-type lft lft)

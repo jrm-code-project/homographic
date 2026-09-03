@@ -149,6 +149,26 @@
                   :delayed-left (stream-delayed-cdr x)
                   :delayed-right (stream-delayed-cdr y))))
 
+(defmethod funcall-bilft (bilft (x lft-stream) (y promise))
+  (binary-expression->lft-stream
+   (make-instance 'binary-expression
+                  :generation 0
+                  :bilft (compose-bilft-lft-x
+                          bilft
+                          (stream-car x))
+                  :delayed-left (stream-delayed-cdr x)
+                  :delayed-right y)))
+
+(defmethod funcall-bilft (bilft (x promise) (y lft-stream))
+  (binary-expression->lft-stream
+   (make-instance 'binary-expression
+                  :generation 0
+                  :bilft (compose-bilft-lft-y
+                          bilft
+                          (stream-car y))
+                  :delayed-left x
+                  :delayed-right (stream-delayed-cdr y))))
+
 (defun unfold-expression-tree-1 (left generate counter)
   (funcall (funcall generate counter)
            left

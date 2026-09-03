@@ -135,6 +135,9 @@
               (lambda () (values nil lft-stream))
               (lambda () (lft-stream-zero-p (refine-lft-stream lft-stream)))))
 
+(defmethod zerop ((number lft-stream))
+  (lft-stream-zero-p number))
+
 (defun lft-stream->radix-stream (lft-stream radix)
   (if (empty-stream? lft-stream)
       the-empty-stream

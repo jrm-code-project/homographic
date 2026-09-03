@@ -1,4 +1,4 @@
-;;; -*- Lisp -*-
+;;; -*- Mode: Lisp ; coding: utf-8 -*-
 
 (in-package "LINEAR-FRACTIONAL-TRANSFORMATION")
 
@@ -127,11 +127,31 @@
 (defmethod expt ((base lft-stream) (exponent cl:rational))
   (exp-lft-stream (funcall (lft-multiply-by-rat exponent) (log base))))
 
+(defmethod expt ((base lft-stream) (exponent single-float))
+  (expt base (rationalize exponent)))
+
+(defmethod expt ((base lft-stream) (exponent double-float))
+  (expt base (rationalize exponent)))
+
 (defmethod expt (base (exponent lft-stream))
   (exp-lft-stream (* (log base) exponent)))
 
 (defmethod expt ((base (eql 0)) (exponent lft-stream))
-  0)
+  (lft-stream-plus-p
+   exponent
+   (lambda (exponent*)
+     (declare (ignore exponent*))
+     0)
+   (lambda (exponent*)
+     (declare (ignore exponent*))
+     (lft-stream-minus-p
+      exponent*
+      (lambda (exponent**)
+        (declare (ignore exponent**))
+        1) ;; 0^0 = 1 ?
+      (lambda (exponent**)
+        (declare (ignore exponent**))
+        (error 'division-by-zero))))))
 
 (defmethod expt ((base (eql 1)) (exponent lft-stream))
   1)
@@ -244,7 +264,7 @@
            (%atan-lft-stream (/ y* x*)))
          (lambda (_)
            (declare (ignore _))
-           (- pi/2 (atan-lft-stream x y)))))))))
+           (- pi/2 (atan-lft-stream x* y*)))))))))
 
 (defmethod atan ((y lft-stream) &optional (x 1))
   (etypecase x
@@ -395,9 +415,6 @@
 
 (defmethod acosh ((number double-float))
   (acosh-rat (rational number)))
-
-(defmethod acosh ((number lft-stream))
-  (acosh-lft-stream number))
 
 (defmethod acosh ((number lft-stream))
   (acosh-lft-stream number))

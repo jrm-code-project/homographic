@@ -40,10 +40,13 @@
                               (lft-stream->cf-stream (reciprocal refined))))))))
 
 (defun canonicalize-cf-stream (cf-stream)
-  (if (and (= 1 (stream-car (stream-cdr cf-stream)))
-           (empty-stream? (stream-cdr (stream-cdr cf-stream))))
-      (cons-stream (+ (stream-car cf-stream) 1) the-empty-stream)
-      (cons-stream (stream-car cf-stream) (canonicalize-cf-stream (stream-cdr cf-stream)))))
+  (cond ((empty-stream? cf-stream) the-empty-stream)
+        ((empty-stream? (stream-cdr cf-stream)) cf-stream)
+        ((and (= 1 (stream-car (stream-cdr cf-stream)))
+              (empty-stream? (stream-cdr (stream-cdr cf-stream))))
+         (cons-stream (+ (stream-car cf-stream) 1) the-empty-stream))
+        (t
+         (cons-stream (stream-car cf-stream) (canonicalize-cf-stream (stream-cdr cf-stream))))))
 
 (defun cf-stream-truncate-delayed (delayed-cf-stream n-elements)
   (if (zerop n-elements)
