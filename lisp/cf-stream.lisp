@@ -34,10 +34,19 @@
       the-empty-stream
       (multiple-value-bind (integer-part fractional-part) (lft-stream-truncate lft-stream)
         (cons-cf-stream integer-part
-                        (multiple-value-bind (zerop refined) (lft-stream-zero-p fractional-part)
-                          (if zerop
-                              the-empty-stream
-                              (lft-stream->cf-stream (reciprocal refined))))))))
+                        ;; LFT-STREAM-TRUNCATE returns THE-EMPTY-STREAM
+                        ;; (not an LFT-STREAM) as FRACTIONAL-PART when the
+                        ;; value is an exact integer with no remainder at
+                        ;; all; LFT-STREAM-ZERO-P has no method for that
+                        ;; (it expects an LFT-STREAM), so it must be
+                        ;; checked for before calling LFT-STREAM-ZERO-P,
+                        ;; not after.
+                        (if (empty-stream? fractional-part)
+                            the-empty-stream
+                            (multiple-value-bind (zerop refined) (lft-stream-zero-p fractional-part)
+                              (if zerop
+                                  the-empty-stream
+                                  (lft-stream->cf-stream (reciprocal refined)))))))))
 
 (defun canonicalize-cf-stream (cf-stream)
   (cond ((empty-stream? cf-stream) the-empty-stream)
@@ -52,11 +61,16 @@
   (if (zerop n-elements)
       the-empty-stream
       (let ((cf-stream (force delayed-cf-stream)))
-        (cons-cf-stream (stream-car cf-stream)
-                        (cf-stream-truncate-delayed (stream-delayed-cdr cf-stream) (- n-elements 1))))))
+        ;; Guard against forcing past the actual end of a finite
+        ;; cf-stream: once exhausted, FORCE yields THE-EMPTY-STREAM
+        ;; (NIL), on which STREAM-CAR/STREAM-DELAYED-CDR have no method.
+        (if (empty-stream? cf-stream)
+            the-empty-stream
+            (cons-cf-stream (stream-car cf-stream)
+                            (cf-stream-truncate-delayed (stream-delayed-cdr cf-stream) (- n-elements 1)))))))
 
 (defun cf-stream-truncate (cf-stream n-elements)
-  (if (zerop n-elements)
+  (if (or (zerop n-elements) (empty-stream? cf-stream))
       the-empty-stream
       (cons-cf-stream (stream-car cf-stream)
                       (cf-stream-truncate-delayed (stream-delayed-cdr cf-stream) (- n-elements 1)))))
@@ -75,6 +89,8 @@
 (defgeneric ->cf-stream (object)
   (:method ((object lft-stream))
     (lft-stream->cf-stream object))
+  (:method ((object integer))
+    (rational->cf-stream object))
   (:method ((object ratio))
     (rational->cf-stream object))
   (:method ((object single-float))
@@ -83,9 +99,13 @@
     (rational->cf-stream (rational object))))
 
 (defun cf-stream->rational (cf-stream)
-  (if (empty-stream? cf-stream)
-      'infinity
-      (+ (stream-car cf-stream) (reciprocal (cf-stream->rational (stream-cdr cf-stream))))))
+  (cond ((empty-stream? cf-stream) 'infinity)
+        ;; The last coefficient terminates the sum directly -- it must
+        ;; NOT recurse one level further into the empty tail (which
+        ;; would try to take the RECIPROCAL of the 'INFINITY sentinel
+        ;; above and fail).
+        ((empty-stream? (stream-cdr cf-stream)) (stream-car cf-stream))
+        (t (+ (stream-car cf-stream) (reciprocal (cf-stream->rational (stream-cdr cf-stream)))))))
 
 (defmethod reciprocal ((object cf-stream))
   (if (zerop (stream-car object))
@@ -93,9 +113,16 @@
       (cons-cf-stream 0 object)))
 
 (defmethod negate ((object cf-stream))
-  (if (empty-stream? object)
-      the-empty-stream
-      (cons-cf-stream (- (stream-car object)) (negate (stream-cdr object)))))
+  (cond ((empty-stream? object) the-empty-stream)
+        ;; Must check whether the CDR is already exhausted before
+        ;; recursing: NEGATE is a method specialized on the CF-STREAM
+        ;; class, and THE-EMPTY-STREAM (NIL) is not a CF-STREAM, so
+        ;; calling NEGATE on it directly (e.g. via the final element's
+        ;; empty tail) would fail with "no applicable method" rather
+        ;; than reaching this method's own empty-stream check.
+        ((empty-stream? (stream-cdr object))
+         (cons-cf-stream (- (stream-car object)) the-empty-stream))
+        (t (cons-cf-stream (- (stream-car object)) (negate (stream-cdr object))))))
 
 (defun cf-stream-prefix (left right)
   (if (and (typep left 'cf-stream)
@@ -118,7 +145,12 @@
                       (cf-stream-append2-delayed (stream-cdr left) delayed-right))))
 
 (defun cf-stream-flatten-append (stream-of-streams)
-  (stream-fold-right-delayed #'cf-stream-append2-delayed '() stream-of-streams))
+  ;; STREAM-FOLD-RIGHT-DELAYED's signature is (f stream final) -- these
+  ;; two arguments were swapped, which made the fold immediately bottom
+  ;; out (treating '() as an already-empty "stream" to fold over) and
+  ;; return STREAM-OF-STREAMS itself unflattened instead of appending
+  ;; its elements together.
+  (stream-fold-right-delayed #'cf-stream-append2-delayed stream-of-streams the-empty-stream))
 
 ;; (defun limit-stream->cf-stream (limit-stream)
 ;;   (let* ((cfs (stream-map #'->cf-stream limit-stream))

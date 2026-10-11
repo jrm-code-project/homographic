@@ -73,6 +73,19 @@
                   f
                   h)))
 
+(defun unimodular? (a b
+                    c d)
+  "Returns TRUE if the determinant of the 2x2 matrix is ±1."
+  (let ((det (- (* a d) (* b c))))
+    (or (= det 1)
+        (= det -1))))
+
+(define-compiler-macro unimodular? (a b
+                                    c d)
+  `(let ((det (- (* ,a ,d) (* ,b ,c))))
+     (or (= det 1)
+         (= det -1))))
+
 (define-compiler-macro 2x2m<2x2m (a b
                                   c d
 
@@ -326,6 +339,12 @@
   (let ((result-numerator   (+ (* a numerator) (* b denominator)))
         (result-denominator (+ (* c numerator) (* d denominator))))
     (cond ((not (zerop result-denominator)) (/ result-numerator result-denominator))
+          ;; A unimodular matrix has a non-zero determinant, so it can never be
+          ;; singular.  Testing this first avoids computing (* a d) and (* b c)
+          ;; on the common case where the LFT is known to be non-degenerate.
+          ((unimodular? a b
+                       c d)
+           'infinity)
           ((= (* a d) (* b c)) (cond ((not (zerop c)) (/ a c))
                                      ((not (zerop d)) (/ b d))
                                      ((or (not (zerop a)) (not (zerop b))) 'infinity)
@@ -618,6 +637,12 @@
                   (minusp d)))
          (canonicalize-lft-coefficients (- a) (- b)
                                         (- c) (- d) receiver))
+        ((unimodular? a b
+                      c d)
+         (funcall receiver
+                  a b
+                  c d))
+
         (*reduce-to-lowest*
          (let ((gcd (gcd a b c d)))
            (if (> gcd 1)
@@ -987,57 +1012,112 @@
    (slot-value bilft 'a) (slot-value bilft 'b) (slot-value bilft 'c) (slot-value bilft 'd)
    (slot-value bilft 'e) (slot-value bilft 'f) (slot-value bilft 'g) (slot-value bilft 'h)))
 
+(defgeneric exact-constant-value (object)
+  (:documentation
+   "If OBJECT (an LFT or BILFT) already represents an exact constant
+value, regardless of its free variable(s) -- i.e. every numerator
+corner coefficient is equal, and every denominator corner coefficient
+is equal -- return that constant value as a rational. Otherwise return
+NIL.
+
+This degenerate, variable-independent shape arises when
+REFINE-LFT-STREAM/REFINE-LEFT/REFINE-RIGHT substitute x = infinity for
+the final term of an exhausted (exact-rational) stream: composing
+anything with that substitution collapses the dependence on the
+now-exhausted variable, and once every one of a stream's or a
+binary-expression's variables has been exhausted this way the result
+no longer depends on any input at all. TRY-DECOMPOSE-DIGIT and
+TRY-DECOMPOSE-SIGN special-case this value directly instead of
+attempting further (impossible) refinement, which would otherwise
+either error or loop forever making no progress.")
+  (:method ((object lft))
+    (let ((a (slot-value object 'a))
+          (b (slot-value object 'b))
+          (c (slot-value object 'c))
+          (d (slot-value object 'd)))
+      (and (zerop a) (zerop c) (not (zerop d)) (/ b d))))
+  (:method ((object bilft))
+    (let ((a (slot-value object 'a))
+          (b (slot-value object 'b))
+          (c (slot-value object 'c))
+          (d (slot-value object 'd))
+          (e (slot-value object 'e))
+          (f (slot-value object 'f))
+          (g (slot-value object 'g))
+          (h (slot-value object 'h)))
+      (and (= a b c d) (= e f g h) (not (zerop h)) (/ d h)))))
+
 ;;;
 ;;; Workhorse functions
 ;;;
 
 (defun lft-zero-p (lft if-always-zero if-never-zero if-sometimes-zero)
   (check-type lft lft)
-  (cond ((and (zerop (slot-value lft 'a))
-              (zerop (slot-value lft 'b))
-              (or (plusp (slot-value lft 'c))
-                  (plusp (slot-value lft 'd))))
-         (funcall if-always-zero))
-        ((and (not (minusp (slot-value lft 'd)))
-              (or (and (plusp (slot-value lft 'a))
-                       (plusp (slot-value lft 'b)))
-                  (and (minusp (slot-value lft 'a))
-                       (minusp (slot-value lft 'b)))))
-         (funcall if-never-zero))
-        (t (funcall if-sometimes-zero))))
+  (let ((value (exact-constant-value lft)))
+    (cond
+      ;; Degenerate exact-constant LFT (see EXACT-CONSTANT-VALUE): the
+      ;; ordinary A/B/C/D sign tests below can never resolve this shape
+      ;; (A and C are both zero, so neither "always" nor "never" branch
+      ;; matches), which would otherwise loop forever refining a stream
+      ;; with no digits left. Decide directly from the known value.
+      (value (if (cl:zerop value) (funcall if-always-zero) (funcall if-never-zero)))
+      ((and (zerop (slot-value lft 'a))
+            (zerop (slot-value lft 'b))
+            (or (plusp (slot-value lft 'c))
+                (plusp (slot-value lft 'd))))
+       (funcall if-always-zero))
+      ((and (not (minusp (slot-value lft 'd)))
+            (or (and (plusp (slot-value lft 'a))
+                     (plusp (slot-value lft 'b)))
+                (and (minusp (slot-value lft 'a))
+                     (minusp (slot-value lft 'b)))))
+       (funcall if-never-zero))
+      (t (funcall if-sometimes-zero)))))
 
 (defun lft-minus-p (lft if-always-minus if-never-minus if-unknown)
   (check-type lft lft)
-  (cond ((minusp (slot-value lft 'd)) (funcall if-unknown))
-        ((and (minusp (slot-value lft 'a))
-              (minusp (slot-value lft 'b)))
-         (funcall if-always-minus))
-        ((and (not (minusp (slot-value lft 'a)))
-              (not (minusp (slot-value lft 'b))))
-         (funcall if-never-minus))
-        (t (funcall if-unknown))))
+  (let ((value (exact-constant-value lft)))
+    (cond
+      ;; See LFT-ZERO-P's identical rationale for this special case.
+      (value (if (cl:minusp value) (funcall if-always-minus) (funcall if-never-minus)))
+      ((minusp (slot-value lft 'd)) (funcall if-unknown))
+      ((and (minusp (slot-value lft 'a))
+            (minusp (slot-value lft 'b)))
+       (funcall if-always-minus))
+      ((and (not (minusp (slot-value lft 'a)))
+            (not (minusp (slot-value lft 'b))))
+       (funcall if-never-minus))
+      (t (funcall if-unknown)))))
 
 (defun lft-plus-p (lft if-always-plus if-never-plus if-unknown)
   (check-type lft lft)
-  (cond ((minusp (slot-value lft 'd)) (funcall if-unknown))
-        ((and (plusp (slot-value lft 'a))
-              (plusp (slot-value lft 'b)))
-         (funcall if-always-plus))
-        ((and (not (plusp (slot-value lft 'a)))
-              (not (plusp (slot-value lft 'b))))
-         (funcall if-never-plus))
-        (t (funcall if-unknown))))
+  (let ((value (exact-constant-value lft)))
+    (cond
+      ;; See LFT-ZERO-P's identical rationale for this special case.
+      (value (if (cl:plusp value) (funcall if-always-plus) (funcall if-never-plus)))
+      ((minusp (slot-value lft 'd)) (funcall if-unknown))
+      ((and (plusp (slot-value lft 'a))
+            (plusp (slot-value lft 'b)))
+       (funcall if-always-plus))
+      ((and (not (plusp (slot-value lft 'a)))
+            (not (plusp (slot-value lft 'b))))
+       (funcall if-never-plus))
+      (t (funcall if-unknown)))))
 
 (defun lft-non-negative-p (lft if-non-negative if-never-non-negative if-unknown)
   (check-type lft lft)
-  (cond ((minusp (slot-value lft 'd)) (funcall if-unknown))
-        ((and (not (minusp (slot-value lft 'a)))
-              (not (minusp (slot-value lft 'b))))
-         (funcall if-non-negative))
-        ((and (minusp (slot-value lft 'a))
-              (minusp (slot-value lft 'b)))
-         (funcall if-never-non-negative))
-        (t (funcall if-unknown))))
+  (let ((value (exact-constant-value lft)))
+    (cond
+      ;; See LFT-ZERO-P's identical rationale for this special case.
+      (value (if (cl:minusp value) (funcall if-never-non-negative) (funcall if-non-negative)))
+      ((minusp (slot-value lft 'd)) (funcall if-unknown))
+      ((and (not (minusp (slot-value lft 'a)))
+            (not (minusp (slot-value lft 'b))))
+       (funcall if-non-negative))
+      ((and (minusp (slot-value lft 'a))
+            (minusp (slot-value lft 'b)))
+       (funcall if-never-non-negative))
+      (t (funcall if-unknown)))))
 
 (defun lft-less-than-rat (lft rat if-less-than if-not-less-than if-unknown)
   (check-type lft lft)
@@ -1115,36 +1195,76 @@
 
 (defun lft-truncate (lft if-success if-failure)
   (check-type lft lft)
-  (if (and (plusp (slot-value lft 'c))
-           (plusp (slot-value lft 'd)))
-      (let ((t1 (truncate (slot-value lft 'a) (slot-value lft 'c)))
-            (t2 (truncate (slot-value lft 'b) (slot-value lft 'd))))
-        (if (= t1 t2)
-            (funcall if-success t1 (- lft t1))
-            (funcall if-failure)))
-      (funcall if-failure)))
+  (let ((a (slot-value lft 'a))
+        (c (slot-value lft 'c))
+        (d (slot-value lft 'd)))
+    (cond
+      ;; A = C = 0 means (a*x+b)/(c*x+d) = b/d for every x -- an exact
+      ;; constant that TRUNCATE(A,C) could not even compute (division by
+      ;; zero). See LFT->DOUBLE's identical special case for why this
+      ;; arises (REFINE-LFT-STREAM substituting x=infinity into the final
+      ;; term of a terminating stream) and why it must be handled here to
+      ;; avoid looping forever refining a stream with no digits left.
+      ((and (zerop a) (zerop c))
+       (if (zerop d)
+           (funcall if-failure)
+           (let ((digit (truncate (slot-value lft 'b) d)))
+             (funcall if-success digit (- lft digit)))))
+      ((and (plusp c) (plusp d))
+       (let ((t1 (truncate a c))
+             (t2 (truncate (slot-value lft 'b) d)))
+         (if (= t1 t2)
+             (funcall if-success t1 (- lft t1))
+             (funcall if-failure))))
+      (t (funcall if-failure)))))
 
 (defun lft->single (lft if-success if-failure)
   (check-type lft lft)
-  (if (and (plusp (slot-value lft 'c))
-           (plusp (slot-value lft 'd)))
-      (let ((s1 (coerce (/ (slot-value lft 'a) (slot-value lft 'c)) 'single-float))
-            (s2 (coerce (/ (slot-value lft 'b) (slot-value lft 'd)) 'single-float)))
-        (if (= s1 s2)
-            (funcall if-success s1)
-            (funcall if-failure)))
-      (funcall if-failure)))
+  (let ((a (slot-value lft 'a))
+        (b (slot-value lft 'b))
+        (c (slot-value lft 'c))
+        (d (slot-value lft 'd)))
+    (cond
+      ;; See LFT->DOUBLE's identical special case.
+      ((and (zerop a) (zerop c))
+       (if (zerop d)
+           (funcall if-failure)
+           (funcall if-success (coerce (/ b d) 'single-float))))
+      ((and (plusp c) (plusp d))
+       (let ((s1 (coerce (/ a c) 'single-float))
+             (s2 (coerce (/ b d) 'single-float)))
+         (if (= s1 s2)
+             (funcall if-success s1)
+             (funcall if-failure))))
+      (t (funcall if-failure)))))
 
 (defun lft->double (lft if-success if-failure)
   (check-type lft lft)
-  (if (and (plusp (slot-value lft 'c))
-           (plusp (slot-value lft 'd)))
-      (let ((d1 (coerce (/ (slot-value lft 'a) (slot-value lft 'c)) 'double-float))
-            (d2 (coerce (/ (slot-value lft 'b) (slot-value lft 'd)) 'double-float)))
-        (if (= d1 d2)
-            (funcall if-success d1)
-            (funcall if-failure)))
-      (funcall if-failure)))
+  (let ((a (slot-value lft 'a))
+        (b (slot-value lft 'b))
+        (c (slot-value lft 'c))
+        (d (slot-value lft 'd)))
+    (cond
+      ;; When A and C are both zero, (a*x+b)/(c*x+d) = b/d for every x --
+      ;; the LFT is already an exact constant, regardless of the sign of
+      ;; D or the usual C>0/D>0 bracketing requirement below. This case
+      ;; arises when REFINE-LFT-STREAM substitutes x=infinity into the
+      ;; final term of a terminating (exact-rational) stream; without
+      ;; this branch, LFT->DOUBLE rejects the already-resolved constant
+      ;; and asks for another refinement, which has no further digits to
+      ;; give and degenerates the LFT to all-zero coefficients, looping
+      ;; forever.
+      ((and (zerop a) (zerop c))
+       (if (zerop d)
+           (funcall if-failure)
+           (funcall if-success (coerce (/ b d) 'double-float))))
+      ((and (plusp c) (plusp d))
+       (let ((d1 (coerce (/ a c) 'double-float))
+             (d2 (coerce (/ b d) 'double-float)))
+         (if (= d1 d2)
+             (funcall if-success d1)
+             (funcall if-failure))))
+      (t (funcall if-failure)))))
 
 (defun bilft-minus-p (bilft if-minus if-plus if-unknown)
   (check-type bilft bilft)

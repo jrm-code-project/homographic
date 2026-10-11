@@ -46,11 +46,15 @@
 
 (defun log-rat (rat)
   (labels ((divide-down (rat powers-of-two)
-             (if (> rat 2)
-                 (divide-down (/ rat 2) (+ powers-of-two 1))
-                 (+
-                  (* powers-of-two log2)
-                  (%log-rat rat)))))
+             (cond ((> rat 2) (divide-down (/ rat 2) (+ powers-of-two 1)))
+                   ;; RAT can land exactly on 1 when the original
+                   ;; argument was an exact power of two; %LOG-RAT's
+                   ;; domain excludes 1 (log(1) = 0), so handle it
+                   ;; here instead of falling through to %LOG-RAT.
+                   ((= rat 1) (* powers-of-two log2))
+                   (t (+
+                       (* powers-of-two log2)
+                       (%log-rat rat))))))
 
     (cond ((minusp rat) (error "Cannot take the log of a negative number."))
           ((< rat 1) (negate (log-rat (/ 1 rat))))
@@ -213,6 +217,10 @@
 (defun atan-rat (y x)
   (cond ((minusp y) (negate (atan-rat (- y) x)))
         ((minusp x) (- pi (atan-rat y (- x))))
+        ;; %RAT-ATAN's domain excludes 0 (it is only valid for the
+        ;; open-below ratio (0, 1]); handle Y = 0 directly instead of
+        ;; dividing by X.
+        ((zerop y) 0)
         ((> y x) (- pi/2 (atan-rat x y)))
         (t (%rat-atan (/ y x)))))
 
@@ -295,17 +303,23 @@
     (cl:rational (atan-rat y x))))
 
 (defun arccos-rat (rational)
-  (let ((sqrat (square rational)))
-    (atan (sqrt (/ (- 1 sqrat) sqrat)))))
+  ;; acos(x) = atan2(sqrt(1 - x^2), x); using the two-argument ATAN
+  ;; directly (rather than dividing sqrt(1-x^2) by x first) avoids a
+  ;; division by zero at x = 0 and correctly handles negative x.
+  (cond ((= rational 1) 0)
+        ((= rational -1) pi)
+        ((zerop rational) pi/2)
+        (t (atan (sqrt (- 1 (square rational))) rational))))
 
 (defun arccos-lft-stream (lft-stream)
   (atan
    (sqrt
     (funcall
      (make-bilft -1 0 0 1
-                 1  0 0 0) ; => (1 - x^2)/x^2
+                 0  0 0 1) ; => 1 - x^2
      lft-stream
-     lft-stream))))
+     lft-stream))
+   lft-stream))
 
 (defmethod acos ((x cl:rational))
   (arccos-rat x))
@@ -314,14 +328,20 @@
   (arccos-lft-stream x))
 
 (defun arcsin-rat (rational)
-  (let ((sqrat (square rational)))
-    (atan (sqrt (/ sqrat (- 1 sqrat))))))
+  ;; asin(x) = atan2(x, sqrt(1 - x^2)); see ARCCOS-RAT for why the
+  ;; two-argument ATAN is used instead of dividing first. x = 0 is
+  ;; special-cased because SQRT(1) produces a degenerate stream.
+  (cond ((zerop rational) 0)
+        ((= rational 1) pi/2)
+        ((= rational -1) (negate pi/2))
+        (t (atan rational (sqrt (- 1 (square rational)))))))
 
 (defun arcsin-lft-stream (lft-stream)
   (atan
+   lft-stream
    (sqrt
-    (funcall (make-bilft 1  0 0 0
-                         -1 0 0 1) ; => #<BILFT -xy/(xy - 1)>
+    (funcall (make-bilft -1 0 0 1
+                         0  0 0 1) ; => 1 - x^2
              lft-stream
              lft-stream))))
 

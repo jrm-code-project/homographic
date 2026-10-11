@@ -123,9 +123,23 @@
      (binary-expression-decompose-digit (refine-disjoint binary-expression)))))
 
 (defun binary-expression->lft-digit-stream (binary-expression)
-  (multiple-value-bind (digit remainder) (binary-expression-decompose-digit binary-expression)
-    (cons-lft-stream digit 
-                     (binary-expression->lft-digit-stream remainder))))
+  (let ((value (exact-constant-value (slot-value binary-expression 'bilft))))
+    (if value
+        ;; The remaining value is already known exactly (every input
+        ;; stream this binary-expression depends on has been exhausted
+        ;; and collapsed to a constant -- see EXACT-CONSTANT-VALUE).
+        ;; Emit it via the ordinary terminating rational-stream
+        ;; constructor instead of continuing to pick between
+        ;; LFT-DIGIT-HIGH/LFT-DIGIT-LOW forever: for a value sitting
+        ;; exactly on the high/low boundary (e.g. any positive
+        ;; integer), that redundant-binary choice cycles forever
+        ;; without ever terminating, which would prevent any downstream
+        ;; consumer (such as LFT-STREAM-TRUNCATE's decimal-digit
+        ;; convergence) from ever making progress.
+        (->lft-stream value)
+        (multiple-value-bind (digit remainder) (binary-expression-decompose-digit binary-expression)
+          (cons-lft-stream digit
+                           (binary-expression->lft-digit-stream remainder))))))
 
 (defun binary-expression->lft-stream (binary-expression)
   (multiple-value-bind (sign remainder) (binary-expression-decompose-sign binary-expression)

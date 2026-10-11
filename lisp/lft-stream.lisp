@@ -211,18 +211,35 @@
   (funcall lft-digit-zero object))
 
 (defun try-decompose-digit (lft if-success if-failure)
-  (decompose-range?
-   lft-digit-high lft
-   if-success
-   (lambda ()
-     (decompose-range?
-      lft-digit-low lft
-      if-success
-      (lambda ()
+  (let ((value (exact-constant-value lft)))
+    (if value
+        ;; LFT (or BILFT, for binary-expression.lisp) is already an
+        ;; exact, input-independent constant (see EXACT-CONSTANT-VALUE
+        ;; in lft.lisp). DECOMPOSE-RANGE?'s bracket checks can never
+        ;; succeed on a degenerate object like this -- its "range" has
+        ;; collapsed to a single point -- which would otherwise force
+        ;; endless, fruitless refinement (REFINE-LFT-STREAM/
+        ;; REFINE-DISJOINT have nothing left to refine). Classify the
+        ;; point directly against the digit buckets' boundaries
+        ;; instead: LFT-DIGIT-LOW covers [0, 1), LFT-DIGIT-HIGH covers
+        ;; [1, infinity).
+        (if (minusp value)
+            (funcall if-failure)
+            (multiple-value-bind (left right)
+                (decompose (if (>= value 1) lft-digit-high lft-digit-low) lft)
+              (funcall if-success left right)))
         (decompose-range?
-         lft-digit-zero lft
+         lft-digit-high lft
          if-success
-         if-failure))))))
+         (lambda ()
+           (decompose-range?
+            lft-digit-low lft
+            if-success
+            (lambda ()
+              (decompose-range?
+               lft-digit-zero lft
+               if-success
+               if-failure))))))))
 
 (defun lft-stream-decompose-digit (lft-stream)
   (try-decompose-digit
@@ -235,8 +252,18 @@
      (lft-stream-decompose-digit (refine-lft-stream lft-stream)))))
 
 (defun lft-stream->lft-digit-stream (lft-stream)
-  (multiple-value-bind (digit remainder) (lft-stream-decompose-digit lft-stream)
-    (cons-lft-stream digit (lft-stream->lft-digit-stream remainder))))
+  (let ((value (exact-constant-value (stream-car lft-stream))))
+    (if value
+        ;; See BINARY-EXPRESSION->LFT-DIGIT-STREAM's identical special
+        ;; case: once the stream's current LFT is already an exact
+        ;; constant (REFINE-LFT-STREAM has substituted x = infinity
+        ;; into the final term of an exhausted, exact-rational
+        ;; stream), emit it via the ordinary terminating rational-
+        ;; stream constructor rather than cycling between
+        ;; LFT-DIGIT-HIGH/LFT-DIGIT-LOW forever.
+        (->lft-stream value)
+        (multiple-value-bind (digit remainder) (lft-stream-decompose-digit lft-stream)
+          (cons-lft-stream digit (lft-stream->lft-digit-stream remainder))))))
 
 (defparameter lft-sign-infinity
   (if (boundp 'lft-sign-infinity)
@@ -275,22 +302,31 @@
   (funcall lft-sign-zero object))
 
 (defun try-decompose-sign (lft if-success if-failure)
-  (decompose-range?
-   lft-sign-positive lft
-   if-success
-   (lambda ()
-     (decompose-range?
-      lft-sign-negative lft
-      if-success
-      (lambda ()
+  (let ((value (exact-constant-value lft)))
+    (if value
+        ;; See TRY-DECOMPOSE-DIGIT's identical special case: LFT (or
+        ;; BILFT) is already an exact, input-independent constant.
+        ;; LFT-SIGN-POSITIVE covers [0, infinity), LFT-SIGN-NEGATIVE
+        ;; covers (-infinity, 0).
+        (multiple-value-bind (left right)
+            (decompose (if (>= value 0) lft-sign-positive lft-sign-negative) lft)
+          (funcall if-success left right))
         (decompose-range?
-         lft-sign-zero lft
+         lft-sign-positive lft
          if-success
          (lambda ()
            (decompose-range?
-            lft-sign-infinity lft
+            lft-sign-negative lft
             if-success
-            if-failure))))))))
+            (lambda ()
+              (decompose-range?
+               lft-sign-zero lft
+               if-success
+               (lambda ()
+                 (decompose-range?
+                  lft-sign-infinity lft
+                  if-success
+                  if-failure))))))))))
 
 (defun lft-stream-decompose-sign (lft-stream)
   (try-decompose-sign
@@ -415,20 +451,19 @@
   (let ((z-squared (square z)))
     (cons-lft-stream (make-lft 0 z
                                1 1)
-                     (big-k-stream (stream-map (lambda (square)
-                                                 (* z-squared square))
-                                               (squares))
+                     (big-k-stream (stream-map (lambda (n-squared)
+                                                 (* z-squared n-squared))
+                                               ;; NB: do not use STREAM:SQUARES here --
+                                               ;; it calls an undefined STREAM::SQUARE.
+                                               (stream-map #'square (naturals)))
                                    (stream-cdr (odds))))))
 
-(defun %rat-tan (x)
-  (check-type x (cl:rational (0) 1))
-  (lft-stream-map
-   (lambda (n)
-     (funcall (make-lft 0 x
-                        x (+ (* n 4) 1))
-              (make-lft 0 x
-                        x (- (* n -4) 3))))
-   (integers)))
+;; NB: %RAT-TAN is defined in BINARY-EXPRESSION.LISP (which loads after
+;; this file and depends on it), not here. That definition has a wider
+;; domain ((-1, 1) vs. this file's former (0, 1)) and is built on the
+;; more general BINARY-EXPRESSION/BILFT machinery, so it is the version
+;; actually used throughout the system; keeping two same-named
+;; definitions around was dead, confusing duplication.
 
 (defparameter euler-gompertz
   (big-k-stream (cons-stream 1 (double-stream (naturals)))
